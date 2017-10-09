@@ -1,5 +1,5 @@
 'use strict';
-/* global window, document, Client */
+/* global window, document, KRPC */
 /* eslint-disable no-alert */
 
 const options = {
@@ -14,9 +14,9 @@ if(!window.location.hash) {
 }
 options.host = window.location.hash.slice(1);
 
-let c = new Client(options);
-c.load().catch(console.error).then(async ()=>{
-    let sc = c.services.spaceCenter;
+let krpc = new KRPC(options);
+krpc.load().catch(console.error).then(async ()=>{
+    let sc = krpc.services.spaceCenter;
     sc.stream('ut');
     let vessel = await sc.activeVessel;
     vessel.stream('situation');
@@ -27,14 +27,16 @@ c.load().catch(console.error).then(async ()=>{
     let boundingBox = await vessel.boundingBox(await vessel.referenceFrame);
 
     setInterval(async ()=>{
-        let time = await c.services.spaceCenter.ut;
+        let time = await sc.ut;
         let altitude = await flight.surfaceAltitude;
         let altitude2 = altitude+boundingBox[0][1];
+        let situation = await vessel.situation;
         let speed = await flight.speed;
 
         document.querySelector("#time").innerText = time;
         document.querySelector("#altitude").innerText = altitude;
         document.querySelector("#altitude2").innerText = altitude2;
+        document.querySelector("#situation").innerText = situation;
         document.querySelector("#speed").innerText = speed;
     },10);
 });

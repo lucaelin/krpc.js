@@ -1,821 +1,6 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 (function (global){
 'use strict';
-const proto = require('./proto');
-const decoders = require('./decoders');
-const encoders = require('./encoders');
-const _ = (typeof window !== "undefined" ? window['_'] : typeof global !== "undefined" ? global['_'] : null);
-
-const Instances = [];
-
-class Service {
-    static getService(name) {
-        return Instances[name];
-    }
-    static getException(service, name) {
-        return Service.getService(service).exceptions[name];
-    }
-    static getEnum(service, name) {
-        return Service.getService(service).enums[name];
-    }
-    static getClass(service, name) {
-        return Service.getService(service).classes[name];
-    }
-    static getCall(service, name) {
-        return Service.getService(service).calls[name];
-    }
-    static getProcedure(service, name) {
-        return Service.getService(service).procedures[name];
-    }
-    constructor(serviceObj, sendCall, streamCall) {
-        this.name = serviceObj.name;
-        this.documentation = serviceObj.documentation;
-        this._sendCall = sendCall;
-        this._streamCall = streamCall;
-        this._streamCache = {};
-        Instances[this.name] = this;
-        this.exceptions = {};
-        serviceObj.exceptions.forEach((exceptionObj)=>this._addException(exceptionObj));
-        this.enums = {};
-        serviceObj.enumerations.forEach((enumObj)=>this._addEnum(enumObj));
-        this.classes = {};
-        serviceObj.classes.forEach((classObj)=>this._addClass(classObj));
-        this.calls = {};
-        this.procedures = {};
-        serviceObj.procedures.forEach((procedureObj)=>this._addProcedure(procedureObj));
-
-        Object.values(this.classes).forEach((cls)=>this._addClassProperties(cls));
-        this._addServiceProperties();
-    }
-    stream(name) {
-        let call = this._streams[name]();
-        this._streamCall(call, (v)=>{
-            this._streamCache[name] = v;
-        });
-    }
-    _addProperties(obj, functions, getter, setter) {
-        let methodes = {};
-        functions.forEach((call)=>{
-            let name = call.split('_').pop();
-            methodes[name] = call;
-        });
-        let attributes = {};
-        getter.forEach((call)=>{
-            let name = call.split('_').pop();
-            attributes[name] = attributes[name]||{};
-            attributes[name].get = call;
-        });
-        setter.forEach((call)=>{
-            let name = call.split('_').pop();
-            attributes[name] = attributes[name]||{};
-            attributes[name].set = call;
-        });
-
-        Object.keys(methodes).forEach((name)=>{
-            let callname = methodes[name];
-            let fn = this.procedures[callname];
-            // TODO: check if functions should be streamable
-            // obj._streams[_.camelCase(name)] = this.calls[callname];
-            obj[_.camelCase(name)] = function(...args) {
-                if(this instanceof Service) {
-                    return fn(...args);
-                }
-                return fn(this, ...args);
-            };
-        });
-
-        Object.keys(attributes).forEach((name)=>{
-            let {get, set} = attributes[name];
-            let handler = {};
-            if (get) {
-                let g = this.procedures[get];
-                obj._streams[_.camelCase(name)] = this.calls[get];
-                handler.get = function() {
-                    if(typeof this._streamCache[_.camelCase(name)] !== "undefined") {
-                        return Promise.resolve(this._streamCache[_.camelCase(name)]);
-                    }
-                    if(this instanceof Service) {
-                        return g();
-                    }
-                    return g(this);
-                };
-            }
-            if (set) {
-                let s = this.procedures[set];
-                handler.set = function(value) {
-                    if(this instanceof Service) {
-                        return s(value);
-                    }
-                    return s(this, value);
-                };
-            }
-
-            Object.defineProperty(obj, _.camelCase(name), handler);
-        });
-    }
-
-    _addClass(classObj) {
-        let _streamCall = this._streamCall;
-        this.classes[classObj.name] = class Class {
-            constructor(id) {
-                if (Class.Instances[id]) {return Class.Instances[id];}
-                Class.Instances[id] = this;
-
-                this.id = id;
-                // this.uid = Math.random().toFixed(10).slice(2);
-                this.className = Class.Name;
-                this.classDocumentation = Class.Documentation;
-                this._streamCache = {};
-            }
-            stream(name) {
-                let call = this._streams[name](this);
-                _streamCall(call, (v)=>{
-                    this._streamCache[name] = v;
-                });
-            }
-        };
-        this.classes[classObj.name].Name = classObj.name;
-        this.classes[classObj.name].Documentation = classObj.documentation;
-        this.classes[classObj.name].Instances = [];
-    }
-    _addClassProperties(cls) {
-        let functions = Object.keys(this.procedures).filter((call)=>call.indexOf(cls.Name) === 0 && call.indexOf('_get_') === -1 && call.indexOf('_set_') === -1);
-        let getter = Object.keys(this.procedures).filter((call)=>call.indexOf(cls.Name+'_get_') === 0);
-        let setter = Object.keys(this.procedures).filter((call)=>call.indexOf(cls.Name+'_set_') === 0);
-
-        cls.prototype._streams = {};
-        this._addProperties(cls.prototype, functions, getter, setter);
-    }
-    _addServiceProperties() {
-        let functions = Object.keys(this.procedures).filter((call)=>call.indexOf('_') === -1);
-        let getter = Object.keys(this.procedures).filter((call)=>call.indexOf('get_') === 0);
-        let setter = Object.keys(this.procedures).filter((call)=>call.indexOf('set_') === 0);
-        Object.values(this.enums).forEach((enm)=>{this[enm.name] = enm;});
-
-        this._streams = {};
-        this._addProperties(this, functions, getter, setter);
-    }
-    _addEnum(enumObj) {
-        let names = {};
-        let values = {};
-        let enm = {};
-        let documentations = {};
-        enumObj.values.forEach((value, i)=>{
-            if(typeof value.value !== 'undefined') {
-                names[value.name] = value.value;
-                values[value.value] = value.name;
-                enm[value.name] = value.value;
-            } else {
-                names[value.name] = i;
-                values[i] = value.name;
-                enm[value.name] = i;
-            }
-            documentations[value.name] = value.documentation;
-        });
-        enm.names = names;
-        enm.values = values;
-        enm.documentations = documentations;
-
-        enm.name = enumObj.name;
-        enm.documentation = enumObj.documentation;
-
-        this.enums[enumObj.name] = enm;
-    }
-    _addException(exceptionObj) {
-        this.exceptions[exceptionObj.name] = function() {
-            this.name = exceptionObj.name;
-            this.message = exceptionObj.documentation;
-        };
-        this.exceptions[exceptionObj.name].prototype = Error.prototype;
-    }
-    _addProcedure(procedureObj) {
-        this.calls[procedureObj.name] = (...args)=>{
-            // console.log('Arguments:',args);
-            let encodedArguments = [];
-            procedureObj.parameters.forEach((param, i)=>{
-                encodedArguments[i] = encoders.argument(args[i], param, Service); //TODO fix service instance
-            });
-            // console.log('encodedArguments:',encodedArguments);
-            return {
-                call: buildProcedureCall(this.name, procedureObj.name, encodedArguments),
-                decode: (value)=>decoders.return(value, procedureObj.returnType, Service) //TODO fix service instance
-            };
-        };
-        this.procedures[procedureObj.name] = (...args)=>{
-            return this._sendCall(this.calls[procedureObj.name](...args)).then(res=>res.results[0].value);
-            // console.log('return:',ret);
-        };
-    }
-}
-
-function buildProcedureCall(service, procedure, args) {
-    args = args.map((arg, i)=>{
-        return proto.Argument.create({position: i, value: arg});
-    });
-    return proto.ProcedureCall.create({service, procedure, arguments: args});
-}
-
-module.exports = Service;
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./decoders":3,"./encoders":4,"./proto":8}],2:[function(require,module,exports){
-'use strict';
-/* global window */
-window.ByteBuffer = require('bytebuffer');
-window.Buffer = require('buffer').Buffer;
-window.Client = require('../lib/krpc.js');
-
-},{"../lib/krpc.js":6,"buffer":20,"bytebuffer":21}],3:[function(require,module,exports){
-(function (Buffer){
-'use strict';
-const proto = require("./proto");
-
-let decoders = {
-    return: decodeReturn,
-    double: decodeDouble,
-    float: decodeFloat,
-    sInt32: decodeSInt32,
-    sInt64: decodeSInt64,
-    uInt32: decodeUInt32,
-    uInt64: decodeUInt64,
-    bool: decodeBool,
-    string: decodeString,
-    bytes: decodeBytes,
-    enum: decodeEnum,
-    class: decodeClass,
-    dictionary: decodeDictionary,
-    list: decodeList,
-    set: decodeSet,
-    tuple: decodeTuple,
-
-    0: ()=>null,
-
-    // Values
-    1: decodeDouble,
-    2: decodeFloat,
-    3: decodeSInt32,
-    4: decodeSInt64,
-    5: decodeUInt32,
-    6: decodeSInt64,
-    7: decodeBool,
-    8: decodeString,
-    9: decodeBytes,
-
-    // Objects
-    100: decodeClass,
-    101: decodeEnum,
-
-    // Messages
-    200: (value)=>proto.ProcedureCall.decode(value),
-    201: (value)=>proto.Stream.decode(value),
-    202: (value)=>proto.Status.decode(value),
-    203: (value)=>proto.Services.decode(value),
-
-    // Collections
-    300: decodeTuple,
-    301: decodeList,
-    302: decodeSet,
-    303: decodeDictionary
-};
-module.exports = decoders;
-
-function decodeReturn(value, returnDef, Service) {
-    if (!value) {
-        return new Buffer(0);
-    }
-    if (!returnDef) {
-        return value;
-    }
-
-    return decoders[returnDef.code](value, returnDef, Service);
-}
-
-/**
- * Takes in a node.js buffer object representing a `double` and decodes it.
- * @param {ByteBuffer} buffer - The buffer object
- * @return {number|*}
- */
-function decodeDouble(buffer) {
-    return buffer.readDoubleLE();
-}
-
-/**
- * Takes in a node.js buffer object representing a `float` and decodes it.
- * @param {ByteBuffer} buffer - The buffer object
- * @return {number|*}
- */
-function decodeFloat(buffer) {
-    return buffer.readFloatLE();
-}
-
-/**
- * Takes in a node.js buffer object representing a `sInt32` and decodes it.
- * @param {ByteBuffer} buffer - The buffer object
- * @return {number}
- */
-function decodeSInt32(buffer) {
-    return buffer.readIntLE() / 2;
-}
-
-/**
- * Takes in a node.js buffer object representing a `sInt64` and decodes it.
- * @param {ByteBuffer} buffer - The buffer object
- * @return {!Long|!{value: Long, length: number}|!Long|{value: !Long, length: number}}
- */
-function decodeSInt64(buffer) {
-    return buffer.readIntLE() / 2;
-}
-
-/**
- * Takes in a node.js buffer object representing a `uInt32` and decodes it.
- * @param {ByteBuffer} buffer - The buffer object
- * @return {{value, length}|number|!{value: number, length: number}}
- */
-function decodeUInt32(buffer) {
-    return buffer.readIntLE();
-}
-
-/**
- * Takes in a node.js buffer object representing a `uInt64` and decodes it.
- * @param {ByteBuffer} buffer - The buffer object
- * @return {*}
- */
-function decodeUInt64(buffer) {
-    return buffer.readIntLE();
-}
-
-/**
- * Takes in a node.js buffer object representing a `bool` and decodes it.
- * @param {ByteBuffer} buffer - The buffer object
- * @return {boolean}
- */
-function decodeBool(buffer) {
-    let numericalValue = buffer.readIntLE();
-    return Boolean(numericalValue);
-}
-
-/**
- * Takes in a node.js buffer object representing a `string` and decodes it.
- * @param {ByteBuffer} buffer - The buffer object
- * @return {string|!{string: string, length: number}|{string, length}}
- */
-function decodeString(buffer) {
-    return buffer.slice(1).toString('utf8');
-}
-
-/**
- * Takes in a node.js buffer object representing `bytes` and removes any header information.
- * @param {ByteBuffer} buffer - The buffer object
- * @return {ByteBuffer}
- */
-function decodeBytes(buffer) {
-    let length = buffer.readIntLE();
-    return buffer.slice(buffer.byteLength-length);
-}
-
-function decodeEnum(value, returnDef, Service) {
-    value = decoders.sInt32(value);
-    let enm = Service.getEnum(returnDef.service, returnDef.name);
-    return enm.values[value];
-}
-
-function decodeClass(value, returnDef, Service) {
-    value = decoders.uInt64(value);
-    let cls = Service.getClass(returnDef.service, returnDef.name);
-    let instance = cls.Instances[value];
-    if (!instance) {return new cls(value);}
-    return instance;
-}
-
-function decodeDictionary(value, returnDef, Service) {
-    value = proto.Dictionary.decode(value).entries;
-    let dict = {};
-    for(let e of value) {
-        let key = decoders.return(e.key, returnDef.types[0], Service);
-        dict[key] = decoders.return(e.value, returnDef.types[1], Service);
-    }
-    return dict;
-}
-
-function decodeList(value, returnDef, Service) {
-    value = proto.List.decode(value).items;
-    let items = value.map((e)=>{
-        return decoders.return(e, returnDef.types[0], Service);
-    });
-    return items;
-}
-
-function decodeSet(value, returnDef, Service) {
-    value = proto.Set.decode(value).items;
-    let items = value.map((e)=>{
-        return decoders.return(e, returnDef.types[0], Service);
-    });
-    return items;
-}
-
-function decodeTuple(value, returnDef, Service) {
-    value = proto.Tuple.decode(value).items;
-    let items = value.map((e, i)=>{
-        return decoders.return(e, returnDef.types[i], Service);
-    });
-    return items;
-}
-
-}).call(this,require("buffer").Buffer)
-},{"./proto":8,"buffer":20}],4:[function(require,module,exports){
-'use strict';
-const ByteBuffer = require("bytebuffer");
-const Buffer = require("buffer").Buffer;
-const proto = require("./proto");
-
-let encoders = {
-    argument: encodeArgument,
-    double: encodeDouble,
-    float: encodeFloat,
-    sInt32: encodeSInt32,
-    sInt64: encodeSInt64,
-    uInt32: encodeUInt32,
-    uInt64: encodeUInt64,
-    bool: encodeBool,
-    string: encodeString,
-    bytes: encodeBytes,
-    enum: encodeEnum,
-    class: encodeClass,
-    dictionary: encodeDictionary,
-    list: encodeList,
-    set: encodeSet,
-    tuple: encodeTuple,
-
-    0: ()=>null,
-
-    // Values
-    1: encodeDouble,
-    2: encodeFloat,
-    3: encodeSInt32,
-    4: encodeSInt64,
-    5: encodeUInt32,
-    6: encodeSInt64,
-    7: encodeBool,
-    8: encodeString,
-    9: encodeBytes,
-
-    // Objects
-    100: encodeClass,
-    101: encodeEnum,
-
-    // Messages
-    200: (arg)=>proto.ProcedureCall.encode(arg).finish(),
-    201: (arg)=>proto.Stream.encode(arg).finish(),
-    202: (arg)=>proto.Status.encode(arg).finish(),
-    203: (arg)=>proto.Services.encode(arg).finish(),
-
-    // Collections
-    300: encodeTuple,
-    301: encodeList,
-    302: encodeSet,
-    303: encodeDictionary
-};
-module.exports = encoders;
-
-function encodeArgument(arg, parameterDef, Service) {
-    if (typeof arg === 'undefined' && parameterDef.defaultValue) {
-        return Buffer.from(parameterDef.defaultValue, 'base64');
-    }
-    return encoders[parameterDef.type.code](arg, parameterDef, Service);
-}
-
-/**
- * Takes in a value and encodes it as a `double` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
- * for use with the protobufjs library.
- * @param value - The value to encode.
- * @return {ByteBuffer|void}
- */
-function encodeDouble(value) {
-    let buffer = new ByteBuffer();
-    buffer.limit = 16;
-    buffer.littleEndian = true;
-    if (value === null) {
-        return buffer;
-    }
-    buffer.writeDouble(value);
-    return Buffer.from(buffer.flip().toBuffer());
-}
-
-/**
- * Takes in a value and encodes it as a `float` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
- * for use with the protobufjs library.
- * @param value - The value to encode.
- * @return {ByteBuffer|void}
- */
-function encodeFloat(value) {
-    let buffer = new ByteBuffer();
-    buffer.limit = 8;
-    buffer.littleEndian = true;
-    if (value === null) {
-        return buffer;
-    }
-    buffer.writeFloat(value);
-    return Buffer.from(buffer.flip().toBuffer());
-}
-
-/**
- * Takes in a value and encodes it as a `sInt32` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
- * for use with the protobufjs library.
- * @param value - The value to encode.
- * @return {ByteBuffer|void}
- */
-function encodeSInt32(value) {
-    let buffer = new ByteBuffer();
-    if (value !== null) {
-        buffer.writeVarint32ZigZag(value);
-    }
-    return Buffer.from(buffer.flip().toBuffer());
-}
-
-/**
- * Takes in a value and encodes it as a `sInt64` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
- * for use with the protobufjs library.
- * @param value - The value to encode.
- * @return {ByteBuffer|void}
- */
-function encodeSInt64(value) {
-    let buffer = new ByteBuffer();
-    if (value !== null) {
-        buffer.writeVarint64ZigZag(value);
-    }
-    return Buffer.from(buffer.flip().toBuffer());
-}
-
-/**
- * Takes in a value and encodes it as a `uInt32` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
- * for use with the protobufjs library.
- * @param value - The value to encode.
- * @return {ByteBuffer|void}
- */
-function encodeUInt32(value) {
-    let buffer = new ByteBuffer();
-    if (value !== null) {
-        buffer.writeVarint32(value);
-    }
-    return Buffer.from(buffer.flip().toBuffer());
-}
-
-/**
- * Takes in a value and encodes it as a `uInt64` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
- * for use with the protobufjs library.
- * @param value - The value to encode.
- * @return {ByteBuffer|void}
- */
-function encodeUInt64(value) {
-    let buffer = new ByteBuffer();
-    if (value !== null) {
-        buffer.writeVarint64(value);
-    }
-    return Buffer.from(buffer.flip().toBuffer());
-}
-
-/**
- * Takes in a value and encodes it as a `bool` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
- * for use with the protobufjs library.
- * @param value - The value to encode.
- * @return {ByteBuffer|void}
- */
-function encodeBool(value) {
-    let buffer = new ByteBuffer();
-    if (value !== null) {
-        if (typeof value === 'string') {
-            buffer.writeVarint32(value.toLowerCase() === 'false' ? 0 : Boolean(value));
-        }else{
-            buffer.writeVarint32(value ? 1 : 0);
-        }
-    }
-    return Buffer.from(buffer.flip().toBuffer());
-}
-
-/**
- * Takes in a value and encodes it as a `string` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
- * for use with the protobufjs library.
- * @param value - The value to encode.
- * @return {ByteBuffer|void}
- */
-function encodeString(value) {
-    let buffer = new ByteBuffer();
-    if (value !== null) {
-        buffer.writeVString(value);
-    }
-    return Buffer.from(buffer.flip().toBuffer());
-}
-
-/**
- * Takes in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object, prepends header information and encodes it as `bytes`
- * stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object for use with the protobufjs library.
- * @param value - The value to encode.
- * @return {ByteBuffer|void}
- */
-function encodeBytes(value) {
-    let buffer = new ByteBuffer();
-    if (value !== null) {
-        buffer.writeVarint32(value.toBuffer().byteLength);
-        value.forEach((v)=>{
-            buffer.writeByte(v);
-        });
-    }
-    return Buffer.from(buffer.flip().toBuffer());
-}
-
-function encodeEnum(arg, parameterDef, Service) {
-    let enm = Service.getEnum(parameterDef.type.service, parameterDef.type.name);
-    arg = enm.names[arg];
-    return encoders.sInt32(arg);
-}
-
-function encodeClass(arg) {
-    return encoders.uInt64(arg.id);
-}
-
-function encodeDictionary(arg, parameterDef, Service) {
-    let entries = [];
-    for(let i in arg) {
-        let key = encoders.argument(i, {type: parameterDef.type.types[0]}, Service);
-        let value = encoders.argument(arg[i], {type: parameterDef.type.types[1]}, Service);
-        entries.push({key, value});
-    }
-    entries = entries.map((e)=>proto.DictionaryEntry.create(e));
-    return Buffer.from(ByteBuffer.wrap(proto.Dictionary.encode({entries}).finish()).toBuffer());
-}
-
-function encodeList(arg, parameterDef, Service) {
-    let items = arg.map((e)=>{
-        return encoders.argument(e, {type: parameterDef.type.types[0]}, Service);
-    });
-    return Buffer.from(ByteBuffer.wrap(proto.List.encode({items}).finish()).toBuffer());
-}
-
-function encodeSet(arg, parameterDef, Service) {
-    let items = arg.map((e)=>{
-        return encoders.argument(e, {type: parameterDef.type.types[0]}, Service);
-    });
-    return Buffer.from(ByteBuffer.wrap(proto.Set.encode({items}).finish()).toBuffer());
-}
-
-function encodeTuple(arg, parameterDef, Service) {
-    let items = parameterDef.type.types.map((e,i)=>{
-        return encoders.argument(arg[i], {type: e}, Service);
-    });
-    return Buffer.from(ByteBuffer.wrap(proto.Tuple.encode({items}).finish()).toBuffer());
-}
-
-},{"./proto":8,"buffer":20,"bytebuffer":21}],5:[function(require,module,exports){
-'use strict';
-let proto = require('./proto');
-const decoders = require('./decoders');
-const encoders = require('./encoders');
-
-function buildProcedureCall(service, procedure, args) {
-    args = args.map((arg, i)=>{
-        return proto.Argument.create({position: i, value: arg});
-    });
-    return proto.ProcedureCall.create({service, procedure, arguments: args});
-}
-
-/**
- * @constructor KRPC
- * @name KRPC
- * @description Main kRPC service, used by clients to interact with basic server functionality.
- * @result {void}
- * @returns {void}
- */
-
-
-/**
- * @augments KRPC
- * @description Returns the identifier for the current client.
- * @result {bytes}
- * @returns {{call :Object, decode: function}}
- */
-module.exports.getClientId = function getClientId() {
-    let encodedArguments = [];
-    return {
-        call: buildProcedureCall('KRPC', 'GetClientID', encodedArguments),
-        decode: (value)=>decoders.bytes(value)
-    };
-};
-
-/**
- * @augments KRPC
- * @description Returns some information about the server, such as the version.
- * @result {Object}
- * @returns {{call :Object, decode: function}}
- */
-module.exports.getStatus = function getStatus() {
-    let encodedArguments = [];
-    return {
-        call: buildProcedureCall('KRPC', 'GetStatus', encodedArguments),
-        decode: (value)=>proto.Status.decode(value)
-    };
-};
-
-/**
- * @augments KRPC
- * @description Returns information on all services, procedures, classes, properties etc. provided by the server.
- * Can be used by client libraries to automatically create functionality such as stubs.
- * @result {Object}
- * @returns {{call :Object, decode: function}}
- */
-module.exports.getServices = function getServices() {
-    let encodedArguments = [];
-    return {
-        call: buildProcedureCall('KRPC', 'GetServices', encodedArguments),
-        decode: (value)=>proto.Services.decode(value)
-    };
-};
-
-/**
- * @augments KRPC
- * @description Add a streaming request and return its identifier.
- * @param {Object} call
- * @result {Object}
- * @returns {{call :Object, decode: function}}
- */
-module.exports.addStream = function addStream(call) {
-    let encodedArguments = [
-        {buffer: proto.ProcedureCall.encode(call).finish()}
-    ];
-    return {
-        call: buildProcedureCall('KRPC', 'AddStream', encodedArguments),
-        decode: (value)=>proto.Stream.decode(value)
-    };
-};
-
-/**
- * @augments KRPC
- * @description Remove a streaming request.
- * @param {number} id
- * @result {void}
- * @returns {void}
- */
-module.exports.removeStream = function removeStream(id) {
-    let encodedArguments = [
-        encoders.uInt64(id)
-    ];
-    return {
-        call: buildProcedureCall('KRPC', 'RemoveStream', encodedArguments),
-        decode: null
-    };
-};
-
-/**
- * @augments KRPC
- * @description A list of RPC clients that are currently connected to the server.
- * Each entry in the list is a clients identifier, name and address.
- * @result {{bytes, string, string}[]}
- * @returns {{call :Object, decode: function}}
- */
-module.exports.getClients = function getClients() {
-    let encodedArguments = [];
-    return {
-        call: buildProcedureCall('KRPC', 'get_Clients', encodedArguments),
-        decode: (value)=>{
-            let list = proto.List.decode(value).items;
-            let items = list.map((tuple)=>{
-                tuple = proto.Tuple.decode(tuple).items;
-                tuple[0] = decoders.bytes(tuple[0]);
-                tuple[1] = decoders.string(tuple[1]);
-                tuple[2] = decoders.string(tuple[2]);
-                return tuple;
-            });
-            return items;
-        }
-    };
-};
-
-/**
- * @augments KRPC
- * @description Get the current game scene.
- * @result {Long} A long value representing the id for the KRPC.GameScene
- * @returns {{call :Object, decode: function}}
- */
-module.exports.getCurrentGameScene = function getCurrentGameScene() {
-    let encodedArguments = [];
-    return {
-        call: buildProcedureCall('KRPC', 'get_CurrentGameScene', encodedArguments),
-        decode: (value)=>{
-            let values = {
-                0: 'SpaceCenter',
-                1: 'Flight',
-                2: 'TrackingStation',
-                3: 'EditorVAB',
-                4: 'EditorSPH'
-            };
-            value = decoders.sInt32(value);
-            return values[value];
-        }
-    };
-};
-
-},{"./decoders":3,"./encoders":4,"./proto":8}],6:[function(require,module,exports){
-(function (global){
-'use strict';
 const WebSocket = (typeof window !== "undefined" ? window['WebSocket'] : typeof global !== "undefined" ? global['WebSocket'] : null);
 const _ = (typeof window !== "undefined" ? window['_'] : typeof global !== "undefined" ? global['_'] : null);
 const proto = require('./proto');
@@ -833,7 +18,7 @@ let defaultOptions = {
     wsProtocols: []
 };
 
-module.exports = class Client {
+module.exports = class KRPC {
     constructor(options) {
         this.options = options;
         _.defaults(this.options, defaultOptions);
@@ -1102,7 +287,822 @@ module.exports = class Client {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./Service":1,"./krpc-service-legacy":5,"./proto":8,"buffer":20}],7:[function(require,module,exports){
+},{"./Service":2,"./krpc-service-legacy":6,"./proto":8,"buffer":20}],2:[function(require,module,exports){
+(function (global){
+'use strict';
+const proto = require('./proto');
+const decoders = require('./decoders');
+const encoders = require('./encoders');
+const _ = (typeof window !== "undefined" ? window['_'] : typeof global !== "undefined" ? global['_'] : null);
+
+const Instances = [];
+
+class Service {
+    static getService(name) {
+        return Instances[name];
+    }
+    static getException(service, name) {
+        return Service.getService(service).exceptions[name];
+    }
+    static getEnum(service, name) {
+        return Service.getService(service).enums[name];
+    }
+    static getClass(service, name) {
+        return Service.getService(service).classes[name];
+    }
+    static getCall(service, name) {
+        return Service.getService(service).calls[name];
+    }
+    static getProcedure(service, name) {
+        return Service.getService(service).procedures[name];
+    }
+    constructor(serviceObj, sendCall, streamCall) {
+        this.name = serviceObj.name;
+        this.documentation = serviceObj.documentation;
+        this._sendCall = sendCall;
+        this._streamCall = streamCall;
+        this._streamCache = {};
+        Instances[this.name] = this;
+        this.exceptions = {};
+        serviceObj.exceptions.forEach((exceptionObj)=>this._addException(exceptionObj));
+        this.enums = {};
+        serviceObj.enumerations.forEach((enumObj)=>this._addEnum(enumObj));
+        this.classes = {};
+        serviceObj.classes.forEach((classObj)=>this._addClass(classObj));
+        this.calls = {};
+        this.procedures = {};
+        serviceObj.procedures.forEach((procedureObj)=>this._addProcedure(procedureObj));
+
+        Object.values(this.classes).forEach((cls)=>this._addClassProperties(cls));
+        this._addServiceProperties();
+    }
+    stream(name) {
+        let call = this._streams[name]();
+        this._streamCall(call, (v)=>{
+            this._streamCache[name] = v;
+        });
+    }
+    _addProperties(obj, functions, getter, setter) {
+        let methodes = {};
+        functions.forEach((call)=>{
+            let name = call.split('_').pop();
+            methodes[name] = call;
+        });
+        let attributes = {};
+        getter.forEach((call)=>{
+            let name = call.split('_').pop();
+            attributes[name] = attributes[name]||{};
+            attributes[name].get = call;
+        });
+        setter.forEach((call)=>{
+            let name = call.split('_').pop();
+            attributes[name] = attributes[name]||{};
+            attributes[name].set = call;
+        });
+
+        Object.keys(methodes).forEach((name)=>{
+            let callname = methodes[name];
+            let fn = this.procedures[callname];
+            // TODO: check if functions should be streamable
+            // obj._streams[_.camelCase(name)] = this.calls[callname];
+            obj[_.camelCase(name)] = function(...args) {
+                if(this instanceof Service) {
+                    return fn(...args);
+                }
+                return fn(this, ...args);
+            };
+        });
+
+        Object.keys(attributes).forEach((name)=>{
+            let {get, set} = attributes[name];
+            let handler = {};
+            if (get) {
+                let g = this.procedures[get];
+                obj._streams[_.camelCase(name)] = this.calls[get];
+                handler.get = function() {
+                    if(typeof this._streamCache[_.camelCase(name)] !== "undefined") {
+                        return Promise.resolve(this._streamCache[_.camelCase(name)]);
+                    }
+                    if(this instanceof Service) {
+                        return g();
+                    }
+                    return g(this);
+                };
+            }
+            if (set) {
+                let s = this.procedures[set];
+                handler.set = function(value) {
+                    if(this instanceof Service) {
+                        return s(value);
+                    }
+                    return s(this, value);
+                };
+            }
+
+            Object.defineProperty(obj, _.camelCase(name), handler);
+        });
+    }
+
+    _addClass(classObj) {
+        let _streamCall = this._streamCall;
+        this.classes[classObj.name] = class Class {
+            constructor(id) {
+                if (Class.Instances[id]) {return Class.Instances[id];}
+                Class.Instances[id] = this;
+
+                this.id = id;
+                // this.uid = Math.random().toFixed(10).slice(2);
+                this.className = Class.Name;
+                this.classDocumentation = Class.Documentation;
+                this._streamCache = {};
+            }
+            stream(name) {
+                let call = this._streams[name](this);
+                _streamCall(call, (v)=>{
+                    this._streamCache[name] = v;
+                });
+            }
+        };
+        this.classes[classObj.name].Name = classObj.name;
+        this.classes[classObj.name].Documentation = classObj.documentation;
+        this.classes[classObj.name].Instances = [];
+    }
+    _addClassProperties(cls) {
+        let functions = Object.keys(this.procedures).filter((call)=>call.indexOf(cls.Name) === 0 && call.indexOf('_get_') === -1 && call.indexOf('_set_') === -1);
+        let getter = Object.keys(this.procedures).filter((call)=>call.indexOf(cls.Name+'_get_') === 0);
+        let setter = Object.keys(this.procedures).filter((call)=>call.indexOf(cls.Name+'_set_') === 0);
+
+        cls.prototype._streams = {};
+        this._addProperties(cls.prototype, functions, getter, setter);
+    }
+    _addServiceProperties() {
+        let functions = Object.keys(this.procedures).filter((call)=>call.indexOf('_') === -1);
+        let getter = Object.keys(this.procedures).filter((call)=>call.indexOf('get_') === 0);
+        let setter = Object.keys(this.procedures).filter((call)=>call.indexOf('set_') === 0);
+        Object.values(this.enums).forEach((enm)=>{this[enm.name] = enm;});
+
+        this._streams = {};
+        this._addProperties(this, functions, getter, setter);
+    }
+    _addEnum(enumObj) {
+        let names = {};
+        let values = {};
+        let enm = {};
+        let documentations = {};
+        enumObj.values.forEach((value, i)=>{
+            if(typeof value.value !== 'undefined') {
+                names[value.name] = value.value;
+                values[value.value] = value.name;
+                enm[value.name] = value.value;
+            } else {
+                names[value.name] = i;
+                values[i] = value.name;
+                enm[value.name] = i;
+            }
+            documentations[value.name] = value.documentation;
+        });
+        enm.names = names;
+        enm.values = values;
+        enm.documentations = documentations;
+
+        enm.name = enumObj.name;
+        enm.documentation = enumObj.documentation;
+
+        this.enums[enumObj.name] = enm;
+    }
+    _addException(exceptionObj) {
+        this.exceptions[exceptionObj.name] = function() {
+            this.name = exceptionObj.name;
+            this.message = exceptionObj.documentation;
+        };
+        this.exceptions[exceptionObj.name].prototype = Error.prototype;
+    }
+    _addProcedure(procedureObj) {
+        this.calls[procedureObj.name] = (...args)=>{
+            // console.log('Arguments:',args);
+            let encodedArguments = [];
+            procedureObj.parameters.forEach((param, i)=>{
+                encodedArguments[i] = encoders.argument(args[i], param, Service); //TODO fix service instance
+            });
+            // console.log('encodedArguments:',encodedArguments);
+            return {
+                call: buildProcedureCall(this.name, procedureObj.name, encodedArguments),
+                decode: (value)=>decoders.return(value, procedureObj.returnType, Service) //TODO fix service instance
+            };
+        };
+        this.procedures[procedureObj.name] = (...args)=>{
+            return this._sendCall(this.calls[procedureObj.name](...args)).then(res=>res.results[0].value);
+            // console.log('return:',ret);
+        };
+    }
+}
+
+function buildProcedureCall(service, procedure, args) {
+    args = args.map((arg, i)=>{
+        return proto.Argument.create({position: i, value: arg});
+    });
+    return proto.ProcedureCall.create({service, procedure, arguments: args});
+}
+
+module.exports = Service;
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./decoders":4,"./encoders":5,"./proto":8}],3:[function(require,module,exports){
+'use strict';
+/* global window */
+window.ByteBuffer = require('bytebuffer');
+window.Buffer = require('buffer').Buffer;
+window.KRPC = require('../lib/KRPC.js');
+
+},{"../lib/KRPC.js":1,"buffer":20,"bytebuffer":21}],4:[function(require,module,exports){
+(function (Buffer){
+'use strict';
+const proto = require("./proto");
+
+let decoders = {
+    return: decodeReturn,
+    double: decodeDouble,
+    float: decodeFloat,
+    sInt32: decodeSInt32,
+    sInt64: decodeSInt64,
+    uInt32: decodeUInt32,
+    uInt64: decodeUInt64,
+    bool: decodeBool,
+    string: decodeString,
+    bytes: decodeBytes,
+    enum: decodeEnum,
+    class: decodeClass,
+    dictionary: decodeDictionary,
+    list: decodeList,
+    set: decodeSet,
+    tuple: decodeTuple,
+
+    0: ()=>null,
+
+    // Values
+    1: decodeDouble,
+    2: decodeFloat,
+    3: decodeSInt32,
+    4: decodeSInt64,
+    5: decodeUInt32,
+    6: decodeSInt64,
+    7: decodeBool,
+    8: decodeString,
+    9: decodeBytes,
+
+    // Objects
+    100: decodeClass,
+    101: decodeEnum,
+
+    // Messages
+    200: (value)=>proto.ProcedureCall.decode(value),
+    201: (value)=>proto.Stream.decode(value),
+    202: (value)=>proto.Status.decode(value),
+    203: (value)=>proto.Services.decode(value),
+
+    // Collections
+    300: decodeTuple,
+    301: decodeList,
+    302: decodeSet,
+    303: decodeDictionary
+};
+module.exports = decoders;
+
+function decodeReturn(value, returnDef, Service) {
+    if (!value) {
+        return new Buffer(0);
+    }
+    if (!returnDef) {
+        return value;
+    }
+
+    return decoders[returnDef.code](value, returnDef, Service);
+}
+
+/**
+ * Takes in a node.js buffer object representing a `double` and decodes it.
+ * @param {ByteBuffer} buffer - The buffer object
+ * @return {number|*}
+ */
+function decodeDouble(buffer) {
+    return buffer.readDoubleLE();
+}
+
+/**
+ * Takes in a node.js buffer object representing a `float` and decodes it.
+ * @param {ByteBuffer} buffer - The buffer object
+ * @return {number|*}
+ */
+function decodeFloat(buffer) {
+    return buffer.readFloatLE();
+}
+
+/**
+ * Takes in a node.js buffer object representing a `sInt32` and decodes it.
+ * @param {ByteBuffer} buffer - The buffer object
+ * @return {number}
+ */
+function decodeSInt32(buffer) {
+    return buffer.readIntLE() / 2;
+}
+
+/**
+ * Takes in a node.js buffer object representing a `sInt64` and decodes it.
+ * @param {ByteBuffer} buffer - The buffer object
+ * @return {!Long|!{value: Long, length: number}|!Long|{value: !Long, length: number}}
+ */
+function decodeSInt64(buffer) {
+    return buffer.readIntLE() / 2;
+}
+
+/**
+ * Takes in a node.js buffer object representing a `uInt32` and decodes it.
+ * @param {ByteBuffer} buffer - The buffer object
+ * @return {{value, length}|number|!{value: number, length: number}}
+ */
+function decodeUInt32(buffer) {
+    return buffer.readIntLE();
+}
+
+/**
+ * Takes in a node.js buffer object representing a `uInt64` and decodes it.
+ * @param {ByteBuffer} buffer - The buffer object
+ * @return {*}
+ */
+function decodeUInt64(buffer) {
+    return buffer.readIntLE();
+}
+
+/**
+ * Takes in a node.js buffer object representing a `bool` and decodes it.
+ * @param {ByteBuffer} buffer - The buffer object
+ * @return {boolean}
+ */
+function decodeBool(buffer) {
+    let numericalValue = buffer.readIntLE();
+    return Boolean(numericalValue);
+}
+
+/**
+ * Takes in a node.js buffer object representing a `string` and decodes it.
+ * @param {ByteBuffer} buffer - The buffer object
+ * @return {string|!{string: string, length: number}|{string, length}}
+ */
+function decodeString(buffer) {
+    return buffer.slice(1).toString('utf8');
+}
+
+/**
+ * Takes in a node.js buffer object representing `bytes` and removes any header information.
+ * @param {ByteBuffer} buffer - The buffer object
+ * @return {ByteBuffer}
+ */
+function decodeBytes(buffer) {
+    let length = buffer.readIntLE();
+    return buffer.slice(buffer.byteLength-length);
+}
+
+function decodeEnum(value, returnDef, Service) {
+    value = decoders.sInt32(value);
+    let enm = Service.getEnum(returnDef.service, returnDef.name);
+    return enm.values[value];
+}
+
+function decodeClass(value, returnDef, Service) {
+    value = decoders.uInt64(value);
+    let cls = Service.getClass(returnDef.service, returnDef.name);
+    let instance = cls.Instances[value];
+    if (!instance) {return new cls(value);}
+    return instance;
+}
+
+function decodeDictionary(value, returnDef, Service) {
+    value = proto.Dictionary.decode(value).entries;
+    let dict = {};
+    for(let e of value) {
+        let key = decoders.return(e.key, returnDef.types[0], Service);
+        dict[key] = decoders.return(e.value, returnDef.types[1], Service);
+    }
+    return dict;
+}
+
+function decodeList(value, returnDef, Service) {
+    value = proto.List.decode(value).items;
+    let items = value.map((e)=>{
+        return decoders.return(e, returnDef.types[0], Service);
+    });
+    return items;
+}
+
+function decodeSet(value, returnDef, Service) {
+    value = proto.Set.decode(value).items;
+    let items = value.map((e)=>{
+        return decoders.return(e, returnDef.types[0], Service);
+    });
+    return items;
+}
+
+function decodeTuple(value, returnDef, Service) {
+    value = proto.Tuple.decode(value).items;
+    let items = value.map((e, i)=>{
+        return decoders.return(e, returnDef.types[i], Service);
+    });
+    return items;
+}
+
+}).call(this,require("buffer").Buffer)
+},{"./proto":8,"buffer":20}],5:[function(require,module,exports){
+'use strict';
+const ByteBuffer = require("bytebuffer");
+const Buffer = require("buffer").Buffer;
+const proto = require("./proto");
+
+let encoders = {
+    argument: encodeArgument,
+    double: encodeDouble,
+    float: encodeFloat,
+    sInt32: encodeSInt32,
+    sInt64: encodeSInt64,
+    uInt32: encodeUInt32,
+    uInt64: encodeUInt64,
+    bool: encodeBool,
+    string: encodeString,
+    bytes: encodeBytes,
+    enum: encodeEnum,
+    class: encodeClass,
+    dictionary: encodeDictionary,
+    list: encodeList,
+    set: encodeSet,
+    tuple: encodeTuple,
+
+    0: ()=>null,
+
+    // Values
+    1: encodeDouble,
+    2: encodeFloat,
+    3: encodeSInt32,
+    4: encodeSInt64,
+    5: encodeUInt32,
+    6: encodeSInt64,
+    7: encodeBool,
+    8: encodeString,
+    9: encodeBytes,
+
+    // Objects
+    100: encodeClass,
+    101: encodeEnum,
+
+    // Messages
+    200: (arg)=>proto.ProcedureCall.encode(arg).finish(),
+    201: (arg)=>proto.Stream.encode(arg).finish(),
+    202: (arg)=>proto.Status.encode(arg).finish(),
+    203: (arg)=>proto.Services.encode(arg).finish(),
+
+    // Collections
+    300: encodeTuple,
+    301: encodeList,
+    302: encodeSet,
+    303: encodeDictionary
+};
+module.exports = encoders;
+
+function encodeArgument(arg, parameterDef, Service) {
+    if (typeof arg === 'undefined' && parameterDef.defaultValue) {
+        return Buffer.from(parameterDef.defaultValue, 'base64');
+    }
+    return encoders[parameterDef.type.code](arg, parameterDef, Service);
+}
+
+/**
+ * Takes in a value and encodes it as a `double` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
+ * for use with the protobufjs library.
+ * @param value - The value to encode.
+ * @return {ByteBuffer|void}
+ */
+function encodeDouble(value) {
+    let buffer = new ByteBuffer();
+    buffer.limit = 16;
+    buffer.littleEndian = true;
+    if (value === null) {
+        return buffer;
+    }
+    buffer.writeDouble(value);
+    return Buffer.from(buffer.flip().toBuffer());
+}
+
+/**
+ * Takes in a value and encodes it as a `float` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
+ * for use with the protobufjs library.
+ * @param value - The value to encode.
+ * @return {ByteBuffer|void}
+ */
+function encodeFloat(value) {
+    let buffer = new ByteBuffer();
+    buffer.limit = 8;
+    buffer.littleEndian = true;
+    if (value === null) {
+        return buffer;
+    }
+    buffer.writeFloat(value);
+    return Buffer.from(buffer.flip().toBuffer());
+}
+
+/**
+ * Takes in a value and encodes it as a `sInt32` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
+ * for use with the protobufjs library.
+ * @param value - The value to encode.
+ * @return {ByteBuffer|void}
+ */
+function encodeSInt32(value) {
+    let buffer = new ByteBuffer();
+    if (value !== null) {
+        buffer.writeVarint32ZigZag(value);
+    }
+    return Buffer.from(buffer.flip().toBuffer());
+}
+
+/**
+ * Takes in a value and encodes it as a `sInt64` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
+ * for use with the protobufjs library.
+ * @param value - The value to encode.
+ * @return {ByteBuffer|void}
+ */
+function encodeSInt64(value) {
+    let buffer = new ByteBuffer();
+    if (value !== null) {
+        buffer.writeVarint64ZigZag(value);
+    }
+    return Buffer.from(buffer.flip().toBuffer());
+}
+
+/**
+ * Takes in a value and encodes it as a `uInt32` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
+ * for use with the protobufjs library.
+ * @param value - The value to encode.
+ * @return {ByteBuffer|void}
+ */
+function encodeUInt32(value) {
+    let buffer = new ByteBuffer();
+    if (value !== null) {
+        buffer.writeVarint32(value);
+    }
+    return Buffer.from(buffer.flip().toBuffer());
+}
+
+/**
+ * Takes in a value and encodes it as a `uInt64` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
+ * for use with the protobufjs library.
+ * @param value - The value to encode.
+ * @return {ByteBuffer|void}
+ */
+function encodeUInt64(value) {
+    let buffer = new ByteBuffer();
+    if (value !== null) {
+        buffer.writeVarint64(value);
+    }
+    return Buffer.from(buffer.flip().toBuffer());
+}
+
+/**
+ * Takes in a value and encodes it as a `bool` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
+ * for use with the protobufjs library.
+ * @param value - The value to encode.
+ * @return {ByteBuffer|void}
+ */
+function encodeBool(value) {
+    let buffer = new ByteBuffer();
+    if (value !== null) {
+        if (typeof value === 'string') {
+            buffer.writeVarint32(value.toLowerCase() === 'false' ? 0 : Boolean(value));
+        }else{
+            buffer.writeVarint32(value ? 1 : 0);
+        }
+    }
+    return Buffer.from(buffer.flip().toBuffer());
+}
+
+/**
+ * Takes in a value and encodes it as a `string` stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object
+ * for use with the protobufjs library.
+ * @param value - The value to encode.
+ * @return {ByteBuffer|void}
+ */
+function encodeString(value) {
+    let buffer = new ByteBuffer();
+    if (value !== null) {
+        buffer.writeVString(value);
+    }
+    return Buffer.from(buffer.flip().toBuffer());
+}
+
+/**
+ * Takes in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object, prepends header information and encodes it as `bytes`
+ * stored in a [ByteBuffer]{@link https://www.npmjs.com/package/bytebuffer} object for use with the protobufjs library.
+ * @param value - The value to encode.
+ * @return {ByteBuffer|void}
+ */
+function encodeBytes(value) {
+    let buffer = new ByteBuffer();
+    if (value !== null) {
+        buffer.writeVarint32(value.toBuffer().byteLength);
+        value.forEach((v)=>{
+            buffer.writeByte(v);
+        });
+    }
+    return Buffer.from(buffer.flip().toBuffer());
+}
+
+function encodeEnum(arg, parameterDef, Service) {
+    let enm = Service.getEnum(parameterDef.type.service, parameterDef.type.name);
+    arg = enm.names[arg];
+    return encoders.sInt32(arg);
+}
+
+function encodeClass(arg) {
+    return encoders.uInt64(arg.id);
+}
+
+function encodeDictionary(arg, parameterDef, Service) {
+    let entries = [];
+    for(let i in arg) {
+        let key = encoders.argument(i, {type: parameterDef.type.types[0]}, Service);
+        let value = encoders.argument(arg[i], {type: parameterDef.type.types[1]}, Service);
+        entries.push({key, value});
+    }
+    entries = entries.map((e)=>proto.DictionaryEntry.create(e));
+    return Buffer.from(ByteBuffer.wrap(proto.Dictionary.encode({entries}).finish()).toBuffer());
+}
+
+function encodeList(arg, parameterDef, Service) {
+    let items = arg.map((e)=>{
+        return encoders.argument(e, {type: parameterDef.type.types[0]}, Service);
+    });
+    return Buffer.from(ByteBuffer.wrap(proto.List.encode({items}).finish()).toBuffer());
+}
+
+function encodeSet(arg, parameterDef, Service) {
+    let items = arg.map((e)=>{
+        return encoders.argument(e, {type: parameterDef.type.types[0]}, Service);
+    });
+    return Buffer.from(ByteBuffer.wrap(proto.Set.encode({items}).finish()).toBuffer());
+}
+
+function encodeTuple(arg, parameterDef, Service) {
+    let items = parameterDef.type.types.map((e,i)=>{
+        return encoders.argument(arg[i], {type: e}, Service);
+    });
+    return Buffer.from(ByteBuffer.wrap(proto.Tuple.encode({items}).finish()).toBuffer());
+}
+
+},{"./proto":8,"buffer":20,"bytebuffer":21}],6:[function(require,module,exports){
+'use strict';
+let proto = require('./proto');
+const decoders = require('./decoders');
+const encoders = require('./encoders');
+
+function buildProcedureCall(service, procedure, args) {
+    args = args.map((arg, i)=>{
+        return proto.Argument.create({position: i, value: arg});
+    });
+    return proto.ProcedureCall.create({service, procedure, arguments: args});
+}
+
+/**
+ * @constructor KRPC
+ * @name KRPC
+ * @description Main kRPC service, used by clients to interact with basic server functionality.
+ * @result {void}
+ * @returns {void}
+ */
+
+
+/**
+ * @augments KRPC
+ * @description Returns the identifier for the current client.
+ * @result {bytes}
+ * @returns {{call :Object, decode: function}}
+ */
+module.exports.getClientId = function getClientId() {
+    let encodedArguments = [];
+    return {
+        call: buildProcedureCall('KRPC', 'GetClientID', encodedArguments),
+        decode: (value)=>decoders.bytes(value)
+    };
+};
+
+/**
+ * @augments KRPC
+ * @description Returns some information about the server, such as the version.
+ * @result {Object}
+ * @returns {{call :Object, decode: function}}
+ */
+module.exports.getStatus = function getStatus() {
+    let encodedArguments = [];
+    return {
+        call: buildProcedureCall('KRPC', 'GetStatus', encodedArguments),
+        decode: (value)=>proto.Status.decode(value)
+    };
+};
+
+/**
+ * @augments KRPC
+ * @description Returns information on all services, procedures, classes, properties etc. provided by the server.
+ * Can be used by client libraries to automatically create functionality such as stubs.
+ * @result {Object}
+ * @returns {{call :Object, decode: function}}
+ */
+module.exports.getServices = function getServices() {
+    let encodedArguments = [];
+    return {
+        call: buildProcedureCall('KRPC', 'GetServices', encodedArguments),
+        decode: (value)=>proto.Services.decode(value)
+    };
+};
+
+/**
+ * @augments KRPC
+ * @description Add a streaming request and return its identifier.
+ * @param {Object} call
+ * @result {Object}
+ * @returns {{call :Object, decode: function}}
+ */
+module.exports.addStream = function addStream(call) {
+    let encodedArguments = [
+        {buffer: proto.ProcedureCall.encode(call).finish()}
+    ];
+    return {
+        call: buildProcedureCall('KRPC', 'AddStream', encodedArguments),
+        decode: (value)=>proto.Stream.decode(value)
+    };
+};
+
+/**
+ * @augments KRPC
+ * @description Remove a streaming request.
+ * @param {number} id
+ * @result {void}
+ * @returns {void}
+ */
+module.exports.removeStream = function removeStream(id) {
+    let encodedArguments = [
+        encoders.uInt64(id)
+    ];
+    return {
+        call: buildProcedureCall('KRPC', 'RemoveStream', encodedArguments),
+        decode: null
+    };
+};
+
+/**
+ * @augments KRPC
+ * @description A list of RPC clients that are currently connected to the server.
+ * Each entry in the list is a clients identifier, name and address.
+ * @result {{bytes, string, string}[]}
+ * @returns {{call :Object, decode: function}}
+ */
+module.exports.getClients = function getClients() {
+    let encodedArguments = [];
+    return {
+        call: buildProcedureCall('KRPC', 'get_Clients', encodedArguments),
+        decode: (value)=>{
+            let list = proto.List.decode(value).items;
+            let items = list.map((tuple)=>{
+                tuple = proto.Tuple.decode(tuple).items;
+                tuple[0] = decoders.bytes(tuple[0]);
+                tuple[1] = decoders.string(tuple[1]);
+                tuple[2] = decoders.string(tuple[2]);
+                return tuple;
+            });
+            return items;
+        }
+    };
+};
+
+/**
+ * @augments KRPC
+ * @description Get the current game scene.
+ * @result {Long} A long value representing the id for the KRPC.GameScene
+ * @returns {{call :Object, decode: function}}
+ */
+module.exports.getCurrentGameScene = function getCurrentGameScene() {
+    let encodedArguments = [];
+    return {
+        call: buildProcedureCall('KRPC', 'get_CurrentGameScene', encodedArguments),
+        decode: (value)=>{
+            let values = {
+                0: 'SpaceCenter',
+                1: 'Flight',
+                2: 'TrackingStation',
+                3: 'EditorVAB',
+                4: 'EditorSPH'
+            };
+            value = decoders.sInt32(value);
+            return values[value];
+        }
+    };
+};
+
+},{"./decoders":4,"./encoders":5,"./proto":8}],7:[function(require,module,exports){
 module.exports={
   "nested": {
     "krpc": {
@@ -16924,4 +16924,4 @@ BufferWriter.prototype.string = function write_string_buffer(value) {
  * @returns {Buffer} Finished buffer
  */
 
-},{"./util/minimal":53,"./writer":56}]},{},[2]);
+},{"./util/minimal":53,"./writer":56}]},{},[3]);

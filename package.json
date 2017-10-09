@@ -2,7 +2,7 @@
   "name": "krpc.js",
   "version": "2.0.1",
   "description": "JavaScript client for krpc",
-  "main": "lib/krpc.js",
+  "main": "lib/KRPC.js",
   "scripts": {
     "mocha": "mocha --full-trace test/**/*.js",
     "test": "mocha --full-trace test/**/*.unit.js",
