@@ -1,4 +1,8 @@
-WIP...
+# krpc.js
+See ./browser for a browserified version
+See ./lib for nodejs 
+
+## Example
 ```javascript
 const KRPC = require('.'); // only needed for node
 
