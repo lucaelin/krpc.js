@@ -1,0 +1,58 @@
+{
+  "name": "krpc.js",
+  "version": "2.0.1",
+  "description": "JavaScript client for krpc",
+  "main": "lib/krpc.js",
+  "scripts": {
+    "mocha": "mocha --full-trace test/**/*.js",
+    "test": "mocha --full-trace test/**/*.unit.js",
+    "lint": "eslint \"lib/**/*.js\" \"test/**/*.js\" --fix",
+    "lint-ci": "eslint \"lib/**/*.js\" \"test/**/*.js\"",
+    "test-ksp-running": "node_modules/.bin/istanbul --include-all-sources cover node_modules/mocha/bin/_mocha test/**/*.js",
+    "report": "plato -r -d report -e .eslintrc lib",
+    "update": "npm-check -Eu",
+    "browserify": "node_modules/browserify/bin/cmd.js -i ws -i events -i lodash ./lib/browser.js > ./browser/krpc.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lucaelin/krpc.js.git"
+  },
+  "keywords": [
+    "ksp",
+    "krpc",
+    "node"
+  ],
+  "author": "Ryan Kotzen",
+  "license": "MIT",
+  "dependencies": {
+    "async": "2.1.5",
+    "buffer": "^5.0.7",
+    "bytebuffer": "5.0.1",
+    "documentation": "4.0.0-beta10",
+    "lodash": "4.17.4",
+    "protobufjs": "6.8.0",
+    "ws": "2.2.0"
+  },
+  "devDependencies": {
+    "browserify": "^14.4.0",
+    "browserify-shim": "^3.8.14",
+    "chai": "3.5.0",
+    "dirty-chai": "1.2.2",
+    "eslint": "4.6.1",
+    "istanbul": "0.4.5",
+    "long": "3.2.0",
+    "mocha": "3.2.0",
+    "npm-check": "5.4.0",
+    "plato": "1.7.0"
+  },
+  "browserify": {
+    "transform": [
+      "browserify-shim"
+    ]
+  },
+  "browserify-shim": {
+    "lodash": "global:_",
+    "events": "global:EventEmitter",
+    "ws": "global:WebSocket"
+  }
+}
