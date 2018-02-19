@@ -552,10 +552,11 @@ let decoders = {
     101: decodeEnum,
 
     // Messages
-    200: (value)=>proto.ProcedureCall.decode(value),
-    201: (value)=>proto.Stream.decode(value),
-    202: (value)=>proto.Status.decode(value),
-    203: (value)=>proto.Services.decode(value),
+    200: (value)=>proto.Event.decode(value),
+    201: (value)=>proto.ProcedureCall.decode(value),
+    202: (value)=>proto.Stream.decode(value),
+    203: (value)=>proto.Status.decode(value),
+    204: (value)=>proto.Services.decode(value),
 
     // Collections
     300: decodeTuple,
@@ -749,10 +750,11 @@ let encoders = {
     101: encodeEnum,
 
     // Messages
-    200: (arg)=>proto.ProcedureCall.encode(arg).finish(),
-    201: (arg)=>proto.Stream.encode(arg).finish(),
-    202: (arg)=>proto.Status.encode(arg).finish(),
-    203: (arg)=>proto.Services.encode(arg).finish(),
+    200: (arg)=>proto.Event.encode(arg).finish(),
+    201: (arg)=>proto.ProcedureCall.encode(arg).finish(),
+    202: (arg)=>proto.Stream.encode(arg).finish(),
+    203: (arg)=>proto.Status.encode(arg).finish(),
+    204: (arg)=>proto.Services.encode(arg).finish(),
 
     // Collections
     300: encodeTuple,
@@ -1179,6 +1181,14 @@ module.exports={
                   "type": "string",
                   "id": 2
                 },
+                "serviceId": {
+                  "type": "uint32",
+                  "id": 4
+                },
+                "procedureId": {
+                  "type": "uint32",
+                  "id": 5
+                },
                 "arguments": {
                   "rule": "repeated",
                   "type": "Argument",
@@ -1438,10 +1448,11 @@ module.exports={
                     "BYTES": 9,
                     "CLASS": 100,
                     "ENUMERATION": 101,
-                    "PROCEDURE_CALL": 200,
-                    "STREAM": 201,
-                    "STATUS": 202,
-                    "SERVICES": 203,
+                    "EVENT": 200,
+                    "PROCEDURE_CALL": 201,
+                    "STREAM": 202,
+                    "STATUS": 203,
+                    "SERVICES": 204,
                     "TUPLE": 300,
                     "LIST": 301,
                     "SET": 302,
@@ -1502,6 +1513,14 @@ module.exports={
               "fields": {
                 "id": {
                   "type": "uint64",
+                  "id": 1
+                }
+              }
+            },
+            "Event": {
+              "fields": {
+                "stream": {
+                  "type": "Stream",
                   "id": 1
                 }
               }
@@ -1583,6 +1602,30 @@ module.exports={
                 "timePerStreamUpdate": {
                   "type": "float",
                   "id": 19
+                }
+              }
+            },
+            "MultiplexedRequest": {
+              "fields": {
+                "connectionRequest": {
+                  "type": "ConnectionRequest",
+                  "id": 1
+                },
+                "request": {
+                  "type": "Request",
+                  "id": 2
+                }
+              }
+            },
+            "MultiplexedResponse": {
+              "fields": {
+                "response": {
+                  "type": "Response",
+                  "id": 1
+                },
+                "streamUpdate": {
+                  "type": "StreamUpdate",
+                  "id": 2
                 }
               }
             }
