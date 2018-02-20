@@ -5,7 +5,7 @@ const WebSocket = (typeof window !== "undefined" ? window['WebSocket'] : typeof 
 const _ = require('lodash');
 const proto = require('./proto');
 const Buffer = require('buffer').Buffer;
-const EventEmitter = require('events');
+//const EventEmitter = require('events');
 const Service = require('./Service');
 const kRPCService = require('./krpc-service-legacy');
 
@@ -27,19 +27,11 @@ module.exports = class KRPC {
         this.decodeStack = [];
         this.rpc = {
             socket: null,
-            cache: [],
-            emitter: new EventEmitter(),
-            on: (eventName, fn)=>{
-                this.rpc.emitter.addEventListener(eventName, fn);
-            }
+            cache: []
         };
         this.stream = {
             socket: null,
-            cache: [],
-            emitter: new EventEmitter(),
-            on: (eventName, fn)=>{
-                this.stream.emitter.addEventListener(eventName, fn);
-            }
+            cache: []
         };
         this.services = {krpcLegacy: kRPCService};
         this.streams = {};
@@ -66,53 +58,53 @@ module.exports = class KRPC {
     }
 
     close() {
-        this.callbackStack = [];
-        this.decodeStack = [];
         this.rpc.socket.close();
         this.stream.socket.close();
+        this.callbackStack = [];
+        this.decodeStack = [];
     }
 
     connectToRPCServer() {
-        return new Promise((resolve)=>{
+        return new Promise((resolve, reject)=>{
             let url = 'ws://' + this.options.host + ':' + this.options.rpcPort.toString()+ '?name=' + this.options.name;
             this.rpc.socket = new WebSocket(url, this.options.wsProtocols, this.options.wsOptions);
             this.rpc.socket.binaryType = 'arraybuffer';
-            this.rpc.socket.addEventListener('error', (event)=>this.onMessageError(event));
-            this.rpc.socket.addEventListener('close', (event)=>this.rpc.emitter.emit('close', event));
+            this.rpc.socket.addEventListener('error', (event)=>console.error('TODO: rpc connection error:', event));
+            this.rpc.socket.addEventListener('close', (event)=>console.error('TODO: rpc connection close:', event));
             this.rpc.socket.addEventListener('message', (event)=>{
                 try {
                     this.onMessage(event.data);
                 } catch (e) {
-                    console.error('Unexpected exception processing RPC-Message:', e);
+                    this.onMessageError(e);
+                    reject(e);
+                    //console.error('Unexpected exception processing RPC-Message:', e);
                 }
             });
             this.rpc.socket.addEventListener('open', async ()=>{
-                this.rpc.emitter.emit('open');
                 let response = await this.send(kRPCService.getClientId());
                 this.clientId = response.results[0].value.toString('base64');
-                resolve(response);
+                resolve(this.clientId);
             }, {once: true});
         });
     }
 
     connectToStreamServer() {
-        return new Promise((resolve)=>{
+        return new Promise((resolve, reject)=>{
             let url = 'ws://' + this.options.host + ':' + this.options.streamPort.toString()+ '?id=' + this.clientId;
             this.stream.socket = new WebSocket(url, this.options.wsProtocols, this.options.wsOptions);
             this.stream.socket.binaryType = 'arraybuffer';
-            this.stream.socket.addEventListener('error', (event)=>this.stream.emitter.emit('error', event));
-            this.stream.socket.addEventListener('close', (event)=>this.stream.emitter.emit('close', event));
+            this.stream.socket.addEventListener('error', (event)=>console.error('TODO: stream connection error:', event));
+            this.stream.socket.addEventListener('close', (event)=>console.error('TODO: stream connection close:', event));
             this.stream.socket.addEventListener('message', (event)=>{
                 try {
                     this.onStreamMessage(event.data);
                 } catch (e) {
+                    //this.onStreamError(e);
+                    reject();
                     console.error('Unexpected exception processing Stream-Message:', e);
                 }
             });
-            this.stream.socket.addEventListener('open', async ()=>{
-                this.stream.emitter.emit('open');
-                resolve();
-            }, {once: true});
+            this.stream.socket.addEventListener('open', resolve, {once: true});
         });
     }
 
@@ -166,18 +158,19 @@ module.exports = class KRPC {
             result.value = decode(Buffer.from(result.value));
             return result;
         });
-        this.rpc.emitter.emit('message', response, data);
+        //this.rpc.emitter.emit('message', response, data);
         if (this.callbackStack.length > 0) {
             let promise = this.callbackStack.pop();
             return promise.resolve(response);
         }
     }
     onMessageError(err) {
+        //this.rpc.emitter.emit('error', err);
         if (this.callbackStack.length > 0) {
+            this.decodeStack.pop();
             let promise = this.callbackStack.pop();
             return promise.reject(err);
         }
-        this.rpc.emitter.emit('error', err);
     }
 
     onStreamMessage(data) {
@@ -185,11 +178,11 @@ module.exports = class KRPC {
         if(!streamUpdate) {return;}
 
         if (Object.keys(this.streams).length === 0) {
-            return this.stream.emitter.emit('message', streamUpdate, data);
+            return; //this.stream.emitter.emit('message', streamUpdate, data);
         }
         streamUpdate.results.forEach((update)=>{
             if (update.result.error) {
-                console.error(update.result.error);
+                // this.stream.emitter.emit('error', update.result.error);
                 return;
             }
             let stream = this.streams[update.id.toString()];
@@ -200,7 +193,7 @@ module.exports = class KRPC {
             let decodedValue = stream.decode(update.result.value);
             stream.callback(decodedValue);
         });
-        return this.stream.emitter.emit('message', streamUpdate, data);
+        // return this.stream.emitter.emit('message', streamUpdate, data);
     }
 
     async send(calls) { // IDEA: collect calls till next tick (setTimeout(..., 0)), then batch send them
@@ -287,7 +280,7 @@ module.exports = class KRPC {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./Service":2,"./krpc-service-legacy":6,"./proto":8,"buffer":20,"events":22,"lodash":24}],2:[function(require,module,exports){
+},{"./Service":2,"./krpc-service-legacy":6,"./proto":8,"buffer":20,"lodash":23}],2:[function(require,module,exports){
 'use strict';
 const proto = require('./proto');
 const decoders = require('./decoders');
@@ -505,7 +498,7 @@ function buildProcedureCall(service, procedure, args) {
 
 module.exports = Service;
 
-},{"./decoders":4,"./encoders":5,"./proto":8,"lodash":24}],3:[function(require,module,exports){
+},{"./decoders":4,"./encoders":5,"./proto":8,"lodash":23}],3:[function(require,module,exports){
 'use strict';
 /* global window */
 
@@ -1656,7 +1649,7 @@ async function load() {
     });
 }
 
-},{"./krpc.proto.json":7,"protobufjs":26}],9:[function(require,module,exports){
+},{"./krpc.proto.json":7,"protobufjs":25}],9:[function(require,module,exports){
 "use strict";
 module.exports = asPromise;
 
@@ -4559,7 +4552,7 @@ function numberIsNaN (obj) {
   return obj !== obj // eslint-disable-line no-self-compare
 }
 
-},{"base64-js":19,"ieee754":23}],21:[function(require,module,exports){
+},{"base64-js":19,"ieee754":22}],21:[function(require,module,exports){
 /*
  Copyright 2013-2014 Daniel Wirtz <dcode@dcode.io>
 
@@ -8307,311 +8300,7 @@ function numberIsNaN (obj) {
     return ByteBuffer;
 });
 
-},{"long":25}],22:[function(require,module,exports){
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-function EventEmitter() {
-  this._events = this._events || {};
-  this._maxListeners = this._maxListeners || undefined;
-}
-module.exports = EventEmitter;
-
-// Backwards-compat with node 0.10.x
-EventEmitter.EventEmitter = EventEmitter;
-
-EventEmitter.prototype._events = undefined;
-EventEmitter.prototype._maxListeners = undefined;
-
-// By default EventEmitters will print a warning if more than 10 listeners are
-// added to it. This is a useful default which helps finding memory leaks.
-EventEmitter.defaultMaxListeners = 10;
-
-// Obviously not all Emitters should be limited to 10. This function allows
-// that to be increased. Set to zero for unlimited.
-EventEmitter.prototype.setMaxListeners = function(n) {
-  if (!isNumber(n) || n < 0 || isNaN(n))
-    throw TypeError('n must be a positive number');
-  this._maxListeners = n;
-  return this;
-};
-
-EventEmitter.prototype.emit = function(type) {
-  var er, handler, len, args, i, listeners;
-
-  if (!this._events)
-    this._events = {};
-
-  // If there is no 'error' event listener then throw.
-  if (type === 'error') {
-    if (!this._events.error ||
-        (isObject(this._events.error) && !this._events.error.length)) {
-      er = arguments[1];
-      if (er instanceof Error) {
-        throw er; // Unhandled 'error' event
-      } else {
-        // At least give some kind of context to the user
-        var err = new Error('Uncaught, unspecified "error" event. (' + er + ')');
-        err.context = er;
-        throw err;
-      }
-    }
-  }
-
-  handler = this._events[type];
-
-  if (isUndefined(handler))
-    return false;
-
-  if (isFunction(handler)) {
-    switch (arguments.length) {
-      // fast cases
-      case 1:
-        handler.call(this);
-        break;
-      case 2:
-        handler.call(this, arguments[1]);
-        break;
-      case 3:
-        handler.call(this, arguments[1], arguments[2]);
-        break;
-      // slower
-      default:
-        args = Array.prototype.slice.call(arguments, 1);
-        handler.apply(this, args);
-    }
-  } else if (isObject(handler)) {
-    args = Array.prototype.slice.call(arguments, 1);
-    listeners = handler.slice();
-    len = listeners.length;
-    for (i = 0; i < len; i++)
-      listeners[i].apply(this, args);
-  }
-
-  return true;
-};
-
-EventEmitter.prototype.addListener = function(type, listener) {
-  var m;
-
-  if (!isFunction(listener))
-    throw TypeError('listener must be a function');
-
-  if (!this._events)
-    this._events = {};
-
-  // To avoid recursion in the case that type === "newListener"! Before
-  // adding it to the listeners, first emit "newListener".
-  if (this._events.newListener)
-    this.emit('newListener', type,
-              isFunction(listener.listener) ?
-              listener.listener : listener);
-
-  if (!this._events[type])
-    // Optimize the case of one listener. Don't need the extra array object.
-    this._events[type] = listener;
-  else if (isObject(this._events[type]))
-    // If we've already got an array, just append.
-    this._events[type].push(listener);
-  else
-    // Adding the second element, need to change to array.
-    this._events[type] = [this._events[type], listener];
-
-  // Check for listener leak
-  if (isObject(this._events[type]) && !this._events[type].warned) {
-    if (!isUndefined(this._maxListeners)) {
-      m = this._maxListeners;
-    } else {
-      m = EventEmitter.defaultMaxListeners;
-    }
-
-    if (m && m > 0 && this._events[type].length > m) {
-      this._events[type].warned = true;
-      console.error('(node) warning: possible EventEmitter memory ' +
-                    'leak detected. %d listeners added. ' +
-                    'Use emitter.setMaxListeners() to increase limit.',
-                    this._events[type].length);
-      if (typeof console.trace === 'function') {
-        // not supported in IE 10
-        console.trace();
-      }
-    }
-  }
-
-  return this;
-};
-
-EventEmitter.prototype.on = EventEmitter.prototype.addListener;
-
-EventEmitter.prototype.once = function(type, listener) {
-  if (!isFunction(listener))
-    throw TypeError('listener must be a function');
-
-  var fired = false;
-
-  function g() {
-    this.removeListener(type, g);
-
-    if (!fired) {
-      fired = true;
-      listener.apply(this, arguments);
-    }
-  }
-
-  g.listener = listener;
-  this.on(type, g);
-
-  return this;
-};
-
-// emits a 'removeListener' event iff the listener was removed
-EventEmitter.prototype.removeListener = function(type, listener) {
-  var list, position, length, i;
-
-  if (!isFunction(listener))
-    throw TypeError('listener must be a function');
-
-  if (!this._events || !this._events[type])
-    return this;
-
-  list = this._events[type];
-  length = list.length;
-  position = -1;
-
-  if (list === listener ||
-      (isFunction(list.listener) && list.listener === listener)) {
-    delete this._events[type];
-    if (this._events.removeListener)
-      this.emit('removeListener', type, listener);
-
-  } else if (isObject(list)) {
-    for (i = length; i-- > 0;) {
-      if (list[i] === listener ||
-          (list[i].listener && list[i].listener === listener)) {
-        position = i;
-        break;
-      }
-    }
-
-    if (position < 0)
-      return this;
-
-    if (list.length === 1) {
-      list.length = 0;
-      delete this._events[type];
-    } else {
-      list.splice(position, 1);
-    }
-
-    if (this._events.removeListener)
-      this.emit('removeListener', type, listener);
-  }
-
-  return this;
-};
-
-EventEmitter.prototype.removeAllListeners = function(type) {
-  var key, listeners;
-
-  if (!this._events)
-    return this;
-
-  // not listening for removeListener, no need to emit
-  if (!this._events.removeListener) {
-    if (arguments.length === 0)
-      this._events = {};
-    else if (this._events[type])
-      delete this._events[type];
-    return this;
-  }
-
-  // emit removeListener for all listeners on all events
-  if (arguments.length === 0) {
-    for (key in this._events) {
-      if (key === 'removeListener') continue;
-      this.removeAllListeners(key);
-    }
-    this.removeAllListeners('removeListener');
-    this._events = {};
-    return this;
-  }
-
-  listeners = this._events[type];
-
-  if (isFunction(listeners)) {
-    this.removeListener(type, listeners);
-  } else if (listeners) {
-    // LIFO order
-    while (listeners.length)
-      this.removeListener(type, listeners[listeners.length - 1]);
-  }
-  delete this._events[type];
-
-  return this;
-};
-
-EventEmitter.prototype.listeners = function(type) {
-  var ret;
-  if (!this._events || !this._events[type])
-    ret = [];
-  else if (isFunction(this._events[type]))
-    ret = [this._events[type]];
-  else
-    ret = this._events[type].slice();
-  return ret;
-};
-
-EventEmitter.prototype.listenerCount = function(type) {
-  if (this._events) {
-    var evlistener = this._events[type];
-
-    if (isFunction(evlistener))
-      return 1;
-    else if (evlistener)
-      return evlistener.length;
-  }
-  return 0;
-};
-
-EventEmitter.listenerCount = function(emitter, type) {
-  return emitter.listenerCount(type);
-};
-
-function isFunction(arg) {
-  return typeof arg === 'function';
-}
-
-function isNumber(arg) {
-  return typeof arg === 'number';
-}
-
-function isObject(arg) {
-  return typeof arg === 'object' && arg !== null;
-}
-
-function isUndefined(arg) {
-  return arg === void 0;
-}
-
-},{}],23:[function(require,module,exports){
+},{"long":24}],22:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = nBytes * 8 - mLen - 1
@@ -8697,7 +8386,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],24:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 (function (global){
 /**
  * @license
@@ -25785,7 +25474,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
 }.call(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],25:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 /*
  Copyright 2013 Daniel Wirtz <dcode@dcode.io>
  Copyright 2009 The Closure Library Authors. All Rights Reserved.
@@ -26996,13 +26685,13 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
     return Long;
 });
 
-},{}],26:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 // full library entry point.
 
 "use strict";
 module.exports = require("./src/index");
 
-},{"./src/index":35}],27:[function(require,module,exports){
+},{"./src/index":34}],26:[function(require,module,exports){
 "use strict";
 module.exports = common;
 
@@ -27382,7 +27071,7 @@ common.get = function get(file) {
     return common[file] || null;
 };
 
-},{}],28:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 "use strict";
 /**
  * Runtime message from/to plain object converters.
@@ -27671,7 +27360,7 @@ converter.toObject = function toObject(mtype) {
     /* eslint-enable no-unexpected-multiline, block-scoped-var, no-redeclare */
 };
 
-},{"./enum":31,"./util":53}],29:[function(require,module,exports){
+},{"./enum":30,"./util":52}],28:[function(require,module,exports){
 "use strict";
 module.exports = decoder;
 
@@ -27779,7 +27468,7 @@ function decoder(mtype) {
     /* eslint-enable no-unexpected-multiline */
 }
 
-},{"./enum":31,"./types":52,"./util":53}],30:[function(require,module,exports){
+},{"./enum":30,"./types":51,"./util":52}],29:[function(require,module,exports){
 "use strict";
 module.exports = encoder;
 
@@ -27880,7 +27569,7 @@ function encoder(mtype) {
     ("return w");
     /* eslint-enable no-unexpected-multiline, block-scoped-var, no-redeclare */
 }
-},{"./enum":31,"./types":52,"./util":53}],31:[function(require,module,exports){
+},{"./enum":30,"./types":51,"./util":52}],30:[function(require,module,exports){
 "use strict";
 module.exports = Enum;
 
@@ -28017,7 +27706,7 @@ Enum.prototype.remove = function(name) {
     return this;
 };
 
-},{"./object":40,"./util":53}],32:[function(require,module,exports){
+},{"./object":39,"./util":52}],31:[function(require,module,exports){
 "use strict";
 module.exports = Field;
 
@@ -28377,7 +28066,7 @@ Field._configure = function configure(Type_) {
     Type = Type_;
 };
 
-},{"./enum":31,"./object":40,"./types":52,"./util":53}],33:[function(require,module,exports){
+},{"./enum":30,"./object":39,"./types":51,"./util":52}],32:[function(require,module,exports){
 "use strict";
 var protobuf = module.exports = require("./index-minimal");
 
@@ -28483,7 +28172,7 @@ protobuf.Namespace._configure(protobuf.Type, protobuf.Service);
 protobuf.Root._configure(protobuf.Type);
 protobuf.Field._configure(protobuf.Type);
 
-},{"./converter":28,"./decoder":29,"./encoder":30,"./enum":31,"./field":32,"./index-minimal":34,"./mapfield":36,"./message":37,"./method":38,"./namespace":39,"./object":40,"./oneof":41,"./root":45,"./service":49,"./type":51,"./types":52,"./util":53,"./verifier":56,"./wrappers":57}],34:[function(require,module,exports){
+},{"./converter":27,"./decoder":28,"./encoder":29,"./enum":30,"./field":31,"./index-minimal":33,"./mapfield":35,"./message":36,"./method":37,"./namespace":38,"./object":39,"./oneof":40,"./root":44,"./service":48,"./type":50,"./types":51,"./util":52,"./verifier":55,"./wrappers":56}],33:[function(require,module,exports){
 "use strict";
 var protobuf = exports;
 
@@ -28521,7 +28210,7 @@ function configure() {
 protobuf.Writer._configure(protobuf.BufferWriter);
 configure();
 
-},{"./reader":43,"./reader_buffer":44,"./roots":46,"./rpc":47,"./util/minimal":55,"./writer":58,"./writer_buffer":59}],35:[function(require,module,exports){
+},{"./reader":42,"./reader_buffer":43,"./roots":45,"./rpc":46,"./util/minimal":54,"./writer":57,"./writer_buffer":58}],34:[function(require,module,exports){
 "use strict";
 var protobuf = module.exports = require("./index-light");
 
@@ -28535,7 +28224,7 @@ protobuf.common           = require("./common");
 // Configure parser
 protobuf.Root._configure(protobuf.Type, protobuf.parse, protobuf.common);
 
-},{"./common":27,"./index-light":33,"./parse":42,"./tokenize":50}],36:[function(require,module,exports){
+},{"./common":26,"./index-light":32,"./parse":41,"./tokenize":49}],35:[function(require,module,exports){
 "use strict";
 module.exports = MapField;
 
@@ -28659,7 +28348,7 @@ MapField.d = function decorateMapField(fieldId, fieldKeyType, fieldValueType) {
     };
 };
 
-},{"./field":32,"./types":52,"./util":53}],37:[function(require,module,exports){
+},{"./field":31,"./types":51,"./util":52}],36:[function(require,module,exports){
 "use strict";
 module.exports = Message;
 
@@ -28799,7 +28488,7 @@ Message.prototype.toJSON = function toJSON() {
 };
 
 /*eslint-enable valid-jsdoc*/
-},{"./util/minimal":55}],38:[function(require,module,exports){
+},{"./util/minimal":54}],37:[function(require,module,exports){
 "use strict";
 module.exports = Method;
 
@@ -28942,7 +28631,7 @@ Method.prototype.resolve = function resolve() {
     return ReflectionObject.prototype.resolve.call(this);
 };
 
-},{"./object":40,"./util":53}],39:[function(require,module,exports){
+},{"./object":39,"./util":52}],38:[function(require,module,exports){
 "use strict";
 module.exports = Namespace;
 
@@ -29345,7 +29034,7 @@ Namespace._configure = function(Type_, Service_) {
     Service = Service_;
 };
 
-},{"./enum":31,"./field":32,"./object":40,"./util":53}],40:[function(require,module,exports){
+},{"./enum":30,"./field":31,"./object":39,"./util":52}],39:[function(require,module,exports){
 "use strict";
 module.exports = ReflectionObject;
 
@@ -29546,7 +29235,7 @@ ReflectionObject._configure = function(Root_) {
     Root = Root_;
 };
 
-},{"./util":53}],41:[function(require,module,exports){
+},{"./util":52}],40:[function(require,module,exports){
 "use strict";
 module.exports = OneOf;
 
@@ -29741,7 +29430,7 @@ OneOf.d = function decorateOneOf() {
     };
 };
 
-},{"./field":32,"./object":40,"./util":53}],42:[function(require,module,exports){
+},{"./field":31,"./object":39,"./util":52}],41:[function(require,module,exports){
 "use strict";
 module.exports = parse;
 
@@ -30482,7 +30171,7 @@ function parse(source, root, options) {
  * @variation 2
  */
 
-},{"./enum":31,"./field":32,"./mapfield":36,"./method":38,"./oneof":41,"./root":45,"./service":49,"./tokenize":50,"./type":51,"./types":52,"./util":53}],43:[function(require,module,exports){
+},{"./enum":30,"./field":31,"./mapfield":35,"./method":37,"./oneof":40,"./root":44,"./service":48,"./tokenize":49,"./type":50,"./types":51,"./util":52}],42:[function(require,module,exports){
 "use strict";
 module.exports = Reader;
 
@@ -30891,7 +30580,7 @@ Reader._configure = function(BufferReader_) {
     });
 };
 
-},{"./util/minimal":55}],44:[function(require,module,exports){
+},{"./util/minimal":54}],43:[function(require,module,exports){
 "use strict";
 module.exports = BufferReader;
 
@@ -30937,7 +30626,7 @@ BufferReader.prototype.string = function read_string_buffer() {
  * @returns {Buffer} Value read
  */
 
-},{"./reader":43,"./util/minimal":55}],45:[function(require,module,exports){
+},{"./reader":42,"./util/minimal":54}],44:[function(require,module,exports){
 "use strict";
 module.exports = Root;
 
@@ -31289,7 +30978,7 @@ Root._configure = function(Type_, parse_, common_) {
     common = common_;
 };
 
-},{"./enum":31,"./field":32,"./namespace":39,"./oneof":41,"./util":53}],46:[function(require,module,exports){
+},{"./enum":30,"./field":31,"./namespace":38,"./oneof":40,"./util":52}],45:[function(require,module,exports){
 "use strict";
 module.exports = {};
 
@@ -31309,7 +30998,7 @@ module.exports = {};
  * var root = protobuf.roots["myroot"];
  */
 
-},{}],47:[function(require,module,exports){
+},{}],46:[function(require,module,exports){
 "use strict";
 
 /**
@@ -31347,7 +31036,7 @@ var rpc = exports;
 
 rpc.Service = require("./rpc/service");
 
-},{"./rpc/service":48}],48:[function(require,module,exports){
+},{"./rpc/service":47}],47:[function(require,module,exports){
 "use strict";
 module.exports = Service;
 
@@ -31491,7 +31180,7 @@ Service.prototype.end = function end(endedByRPC) {
     return this;
 };
 
-},{"../util/minimal":55}],49:[function(require,module,exports){
+},{"../util/minimal":54}],48:[function(require,module,exports){
 "use strict";
 module.exports = Service;
 
@@ -31655,7 +31344,7 @@ Service.prototype.create = function create(rpcImpl, requestDelimited, responseDe
     return rpcService;
 };
 
-},{"./method":38,"./namespace":39,"./rpc":47,"./util":53}],50:[function(require,module,exports){
+},{"./method":37,"./namespace":38,"./rpc":46,"./util":52}],49:[function(require,module,exports){
 "use strict";
 module.exports = tokenize;
 
@@ -31984,7 +31673,7 @@ function tokenize(source) {
     /* eslint-enable callback-return */
 }
 
-},{}],51:[function(require,module,exports){
+},{}],50:[function(require,module,exports){
 "use strict";
 module.exports = Type;
 
@@ -32578,7 +32267,7 @@ Type.d = function decorateType(typeName) {
     };
 };
 
-},{"./converter":28,"./decoder":29,"./encoder":30,"./enum":31,"./field":32,"./mapfield":36,"./message":37,"./namespace":39,"./oneof":41,"./reader":43,"./service":49,"./util":53,"./verifier":56,"./wrappers":57,"./writer":58}],52:[function(require,module,exports){
+},{"./converter":27,"./decoder":28,"./encoder":29,"./enum":30,"./field":31,"./mapfield":35,"./message":36,"./namespace":38,"./oneof":40,"./reader":42,"./service":48,"./util":52,"./verifier":55,"./wrappers":56,"./writer":57}],51:[function(require,module,exports){
 "use strict";
 
 /**
@@ -32776,7 +32465,7 @@ types.packed = bake([
     /* bool     */ 0
 ]);
 
-},{"./util":53}],53:[function(require,module,exports){
+},{"./util":52}],52:[function(require,module,exports){
 "use strict";
 
 /**
@@ -32945,7 +32634,7 @@ Object.defineProperty(util, "decorateRoot", {
     }
 });
 
-},{"./enum":31,"./root":45,"./roots":46,"./type":51,"./util/minimal":55,"@protobufjs/codegen":11,"@protobufjs/fetch":13,"@protobufjs/path":16}],54:[function(require,module,exports){
+},{"./enum":30,"./root":44,"./roots":45,"./type":50,"./util/minimal":54,"@protobufjs/codegen":11,"@protobufjs/fetch":13,"@protobufjs/path":16}],53:[function(require,module,exports){
 "use strict";
 module.exports = LongBits;
 
@@ -33147,7 +32836,7 @@ LongBits.prototype.length = function length() {
          : part2 < 128 ? 9 : 10;
 };
 
-},{"../util/minimal":55}],55:[function(require,module,exports){
+},{"../util/minimal":54}],54:[function(require,module,exports){
 (function (global){
 "use strict";
 var util = exports;
@@ -33556,7 +33245,7 @@ util._configure = function() {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./longbits":54,"@protobufjs/aspromise":9,"@protobufjs/base64":10,"@protobufjs/eventemitter":12,"@protobufjs/float":14,"@protobufjs/inquire":15,"@protobufjs/pool":17,"@protobufjs/utf8":18}],56:[function(require,module,exports){
+},{"./longbits":53,"@protobufjs/aspromise":9,"@protobufjs/base64":10,"@protobufjs/eventemitter":12,"@protobufjs/float":14,"@protobufjs/inquire":15,"@protobufjs/pool":17,"@protobufjs/utf8":18}],55:[function(require,module,exports){
 "use strict";
 module.exports = verifier;
 
@@ -33733,7 +33422,7 @@ function verifier(mtype) {
     ("return null");
     /* eslint-enable no-unexpected-multiline */
 }
-},{"./enum":31,"./util":53}],57:[function(require,module,exports){
+},{"./enum":30,"./util":52}],56:[function(require,module,exports){
 "use strict";
 
 /**
@@ -33811,7 +33500,7 @@ wrappers[".google.protobuf.Any"] = {
     }
 };
 
-},{"./message":37}],58:[function(require,module,exports){
+},{"./message":36}],57:[function(require,module,exports){
 "use strict";
 module.exports = Writer;
 
@@ -34272,7 +33961,7 @@ Writer._configure = function(BufferWriter_) {
     BufferWriter = BufferWriter_;
 };
 
-},{"./util/minimal":55}],59:[function(require,module,exports){
+},{"./util/minimal":54}],58:[function(require,module,exports){
 "use strict";
 module.exports = BufferWriter;
 
@@ -34355,4 +34044,4 @@ BufferWriter.prototype.string = function write_string_buffer(value) {
  * @returns {Buffer} Finished buffer
  */
 
-},{"./util/minimal":55,"./writer":58}]},{},[3]);
+},{"./util/minimal":54,"./writer":57}]},{},[3]);

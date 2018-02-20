@@ -15,7 +15,7 @@ if(!window.location.hash) {
 options.host = window.location.hash.slice(1);
 
 let krpc = new KRPC(options);
-krpc.load().catch(console.error).then(async ()=>{
+krpc.load().then(async ()=>{
     let sc = krpc.services.spaceCenter;
     sc.stream('ut');
     let vessel = await sc.activeVessel;
@@ -39,4 +39,4 @@ krpc.load().catch(console.error).then(async ()=>{
         document.querySelector("#situation").innerText = situation;
         document.querySelector("#speed").innerText = speed;
     },10);
-});
+}).catch((e)=>console.error('Error connecting to Vessel:',e));
