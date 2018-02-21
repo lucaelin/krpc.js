@@ -4,14 +4,10 @@
   "description": "JavaScript client for krpc",
   "main": "lib/KRPC.js",
   "scripts": {
-    "mocha": "mocha --full-trace test/**/*.js",
-    "test": "mocha --full-trace test/**/*.unit.js",
-    "lint": "eslint \"lib/**/*.js\" \"test/**/*.js\" --fix",
-    "lint-ci": "eslint \"lib/**/*.js\" \"test/**/*.js\"",
-    "test-ksp-running": "node_modules/.bin/istanbul --include-all-sources cover node_modules/mocha/bin/_mocha test/**/*.js",
-    "report": "plato -r -d report -e .eslintrc lib",
-    "update": "npm-check -Eu",
-    "browserify": "node_modules/browserify/bin/cmd.js -i ws ./lib/browser.js > ./browser/KRPC.js",
+    "lint": "eslint \"lib/**/*.js\" --fix",
+    "lint-ci": "eslint \"lib/**/*.js\"",
+    "upgrade": "npm-check -Eu",
+    "browserify": "node_modules/browserify/bin/cmd.js --debug -i ws ./lib/browser.js > ./browser/KRPC.js",
     "protojson": "node_modules/protobufjs/bin/pbjs -t json lib/krpc.proto -o lib/krpc.proto.json"
   },
   "repository": {
@@ -23,28 +19,20 @@
     "krpc",
     "node"
   ],
-  "author": "Ryan Kotzen",
+  "author": "Luca Haneklau",
   "license": "MIT",
   "dependencies": {
-    "async": "2.1.5",
-    "buffer": "^5.0.7",
+    "buffer": "5.1.0",
     "bytebuffer": "5.0.1",
-    "documentation": "4.0.0-beta10",
-    "lodash": "4.17.4",
-    "protobufjs": "6.8.0",
-    "ws": "2.2.0"
+    "lodash": "4.17.5",
+    "protobufjs": "6.8.5",
+    "ws": "4.0.0"
   },
   "devDependencies": {
-    "browserify": "^14.4.0",
-    "browserify-shim": "^3.8.14",
-    "chai": "3.5.0",
-    "dirty-chai": "1.2.2",
-    "eslint": "4.6.1",
-    "istanbul": "0.4.5",
-    "long": "3.2.0",
-    "mocha": "3.2.0",
-    "npm-check": "5.4.0",
-    "plato": "1.7.0"
+    "browserify": "16.1.0",
+    "browserify-shim": "3.8.14",
+    "eslint": "4.18.1",
+    "npm-check": "5.5.2"
   },
   "browserify": {
     "transform": [
