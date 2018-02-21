@@ -1,6 +1,6 @@
 # krpc.js
 See ./browser for a browserified version
-See ./lib for nodejs 
+See ./lib for nodejs
 
 ## Example
 ```javascript
@@ -22,7 +22,7 @@ krpc.load().then(async ()=>{
     for (let i = 0; i<10; i++) {
         console.log(await vessel.situtation); // slow, one rpc is executed every time
     }
-    
+
     vessel.stream('situation');
     for (let i = 0; i<10; i++) {
         console.log(await vessel.situtation); // fast, streamed properties can be resolved immediately
