@@ -165,7 +165,7 @@ module.exports = {
         "jsx-quotes": ["off"],// enforce the consistent use of either double or single quotes in JSX attributes
         "key-spacing": ["off"],// enforce consistent spacing between keys and values in object literal properties
         "keyword-spacing": ["off"],// enforce consistent spacing before and after keywords
-        "linebreak-style": ["off", "windows"],// enforce consistent linebreak style
+        "linebreak-style": ["off", "unix"],// enforce consistent linebreak style
         "lines-around-comment": ["off"],// require empty lines around comments
         "max-depth": ["off"],// enforce a maximum depth that blocks can be nested
         "max-len": ["off"],// enforce a maximum line length
