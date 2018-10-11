@@ -6,7 +6,8 @@
           "options": {
             "csharp_namespace": "KRPC.Schema.KRPC",
             "java_package": "krpc.schema",
-            "java_outer_classname": "KRPC"
+            "java_outer_classname": "KRPC",
+            "objc_class_prefix": "KRPC"
           },
           "nested": {
             "ConnectionRequest": {
