@@ -232,9 +232,26 @@
                   "type": "bool",
                   "id": 4
                 },
+                "gameScenes": {
+                  "rule": "repeated",
+                  "type": "GameScene",
+                  "id": 6
+                },
                 "documentation": {
                   "type": "string",
                   "id": 5
+                }
+              },
+              "nested": {
+                "GameScene": {
+                  "values": {
+                    "SPACE_CENTER": 0,
+                    "FLIGHT": 1,
+                    "TRACKING_STATION": 2,
+                    "EDITOR_VAB": 3,
+                    "EDITOR_SPH": 4,
+                    "MISSION_BUILDER": 5
+                  }
                 }
               }
             },
