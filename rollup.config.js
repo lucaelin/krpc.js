@@ -1,7 +1,6 @@
 import resolve from 'rollup-plugin-node-resolve';
 import commonjs from 'rollup-plugin-commonjs';
 import copy from 'rollup-plugin-copy';
-import minifyHTML from 'rollup-plugin-minify-html-literals';
 import { terser } from 'rollup-plugin-terser';
 import sourcemaps from 'rollup-plugin-sourcemaps';
 import json from 'rollup-plugin-json';
@@ -32,7 +31,6 @@ export default [{
     commonjs(),
     resolve({browser: true, preferBuiltins: false}),
     sourcemaps(),
-    minifyHTML(),
     terser(),
     copy({
       targets: [...resources],
