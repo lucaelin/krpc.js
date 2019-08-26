@@ -1,6 +1,6 @@
-'use strict';
-/* global window, document, KRPC */
+/* global window, document */
 /* eslint-disable no-alert */
+import KRPC from './KRPC.js';
 
 const options = {
     name: 'krpc.js-browser',

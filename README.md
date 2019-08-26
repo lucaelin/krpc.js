@@ -1,10 +1,13 @@
 # krpc.js
+This is a client library for the Kerbal Space Program mod KRPC.
+It provides a Object-Oriented and promise-based view to the API exposed by the mod.
+
 See ./browser for a browserified version
 See ./lib for nodejs
 
 ## Example
 ```javascript
-const KRPC = require('.'); // only needed for node
+import KRPC from 'krpc.js';
 
 const options = {
     name: 'krpc.js',    // (default)
@@ -28,9 +31,9 @@ krpc.load().then(async ()=>{
     for (let i = 0; i<10; i++) {
         console.log(await vessel.situtation); // fast, streamed properties can be resolved immediately
     }
-    
+
     //yet another way:
     let stream = vessel.stream('situation', (situation)=>console.log(situation));
-    window.setTimeout(()=>stream.remove(), 60*1000);
+    setTimeout(()=>stream.remove(), 60*1000);
 }.catch(console.error)
 ```
