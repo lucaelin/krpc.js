@@ -158,7 +158,7 @@ krpc.load().then(async ()=>{
         const end = Date.now();
         const duration = end-start;
         console.log('Parallel performance:', samples, 'samples took', duration, 'ms');
-        expectEf('sequentialPerformance', duration, d=>d<1000); // ensure the test doesn't take longer than 1s
+        expectEf('sequentialPerformance', duration, d=>d<5000); // ensure the test doesn't take longer than 5s
     })();
 
     console.log('All tests passed!');
