@@ -7,10 +7,10 @@ services:
   - docker
 
 before_install:
-- docker build ./test -t krpc.js/krpc.js
+- docker pull krpc/testserver:0.4.8
 
 before_script:
-- docker run -d -p 50000:50000 -p 50001:50001 --rm krpc.js/krpc.js
+- docker run -d -p 50000:50000 -p 50001:50001 --rm krpc/testserver:0.4.8 --type=websockets
 - until curl 172.17.0.1:50000; do sleep 1; done
 
 script:
