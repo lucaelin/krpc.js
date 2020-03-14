@@ -14,7 +14,7 @@
     "lint": "eslint \"lib/**/*.js\" --fix",
     "lint-ci": "eslint \"lib/**/*.js\"",
     "test": "npm run test-node",
-    "test-node": "node --experimental-modules ./test/node.js",
+    "test-node": "node --experimental-modules --es-module-specifier-resolution=node ./test/node.js",
     "build-proto-json": "node_modules/protobufjs/bin/pbjs -t json lib/krpc.proto -o lib/krpc.proto.json"
   },
   "repository": {
