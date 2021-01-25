@@ -15,7 +15,7 @@ jobs:
       testserver:
         # Docker Hub image
         image: krpc/testserver:0.4.8
-        options: --type=websocket
+        command: --type=websocket
         ports:
           - 50000:50000
           - 50001:50001
