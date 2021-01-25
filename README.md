@@ -5,6 +5,11 @@ It provides a Object-Oriented and promise-based view to the API exposed by the m
 See ./browser for a browserified version
 See ./lib for nodejs
 
+## Install
+```bash
+npm i https://github.com/lucaelin/krpc.js
+```
+
 ## Example
 ```javascript
 import KRPC from 'krpc.js';
