@@ -49,7 +49,7 @@ krpc.load().then(async ()=>{
         return expectEf(fn, ret, _=>false);
     };
 
-    await Promise.all([
+    const res = await Promise.all([
         eq('floatToString', 0.00001, '1E-05'),
         eq('floatToString', 0.11111, '0.11111'),
         eq('floatToString', 0.11111111111111111, '0.1111111'),
@@ -114,7 +114,7 @@ krpc.load().then(async ()=>{
             await ee('CustomException', 'throwCustomExceptionLater');
         })(),
         (async ()=>{
-            const testObject = await ts.createTestObject('hi');
+            const testObject = await ts.createTestObject('test-'+Math.random().toString());
             const streamValue = await new Promise(res=>testObject.stream('intProperty', res));
             expectEq('streamedIntProperty', streamValue, 0);
             const nextValue = new Promise(res=>testObject.stream('intProperty', res));
@@ -133,6 +133,7 @@ krpc.load().then(async ()=>{
         })),
     ]);
 
+    console.log(res.length, 'tests passed');
     console.log('Testing performance');
 
     await (async ()=>{

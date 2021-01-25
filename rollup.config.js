@@ -1,12 +1,12 @@
-import resolve from 'rollup-plugin-node-resolve';
-import commonjs from 'rollup-plugin-commonjs';
+import resolve from '@rollup/plugin-node-resolve';
+import commonjs from '@rollup/plugin-commonjs';
 import copy from 'rollup-plugin-copy';
 import { terser } from 'rollup-plugin-terser';
 import sourcemaps from 'rollup-plugin-sourcemaps';
 import json from 'rollup-plugin-json';
 import globals from 'rollup-plugin-node-globals';
-import builtins from 'rollup-plugin-node-builtins';
-import virtual from 'rollup-plugin-virtual';
+import builtins from 'rollup-plugin-node-polyfills';
+import virtual from '@rollup/plugin-virtual';
 
 const resources = [];
 
@@ -30,6 +30,27 @@ export default [{
     }),
     commonjs(),
     resolve({browser: true, preferBuiltins: false}),
+    sourcemaps(),
+    terser(),
+    copy({
+      targets: [...resources],
+    }),
+  ],
+
+  watch: {
+    clearScreen: false,
+  },
+},{
+  input: './lib/KRPC.js',
+  output: [{
+      format: 'commonjs',
+      file: 'commonjs/KRPC.js',
+      sourcemap: true,
+      name: 'KRPC',
+      exports: 'default',
+  }],
+  plugins: [
+    json(),
     sourcemaps(),
     terser(),
     copy({
