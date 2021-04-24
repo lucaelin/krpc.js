@@ -30,6 +30,6 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
     - run: npm ci
-    - run: npm build
+    - run: npm run build
     - run: until curl localhost:50000; do sleep 1; done
-    - run: npm test
+    - run: npm run test
