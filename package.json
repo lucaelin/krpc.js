@@ -33,7 +33,7 @@
     "buffer": "6.0.3",
     "lodash-es": "^4.17.20",
     "protobufjs": "^6.10.2",
-    "ws": "7.4.2"
+    "ws": "7.4.5"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^17.0.0",
