@@ -40,5 +40,5 @@ krpc.load().then(async ()=>{
     //yet another way:
     let stream = vessel.stream('situation', (situation)=>console.log(situation));
     setTimeout(()=>stream.remove(), 60*1000);
-}.catch(console.error)
+}).catch(console.error)
 ```
