@@ -1,8 +1,8 @@
 {
   "name": "krpc.js",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "JavaScript client for krpc",
-  "main": "commonjs/KRPC.js",
+  "main": "lib/KRPC.js",
   "module": "lib/KRPC.js",
   "browser": "browser/KRPC.js",
   "type": "module",

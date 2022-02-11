@@ -4,6 +4,7 @@ It provides a Object-Oriented and promise-based view to the API exposed by the m
 
 See ./browser for a browserified version
 See ./lib for nodejs
+See ./commonjs for legacy nodejs
 
 ## Install
 ```bash
