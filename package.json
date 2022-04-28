@@ -31,7 +31,7 @@
   "license": "MIT",
   "dependencies": {
     "buffer": "6.0.3",
-    "lodash-es": "^4.17.20",
+    "lodash-es": "^4.17.21",
     "protobufjs": "^6.10.2",
     "ws": "7.4.6"
   },
