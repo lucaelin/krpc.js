@@ -1,6 +1,6 @@
 {
   "name": "krpc.js",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "JavaScript client for krpc",
   "main": "lib/KRPC.js",
   "module": "lib/KRPC.js",
@@ -31,19 +31,19 @@
   "license": "MIT",
   "dependencies": {
     "buffer": "6.0.3",
-    "lodash-es": "^4.17.20",
-    "protobufjs": "^6.10.2",
-    "ws": "7.4.6"
+    "lodash-es": "^4.17.21",
+    "protobufjs": "^6.11.3",
+    "ws": "8.7.0"
   },
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^17.0.0",
-    "@rollup/plugin-node-resolve": "^11.1.0",
-    "@rollup/plugin-virtual": "^2.0.3",
-    "concurrently": "^5.3.0",
-    "eslint": "7.18.0",
-    "http-server": "^0.12.3",
-    "rollup": "^2.38.0",
-    "rollup-plugin-copy": "^3.3.0",
+    "@rollup/plugin-commonjs": "^22.0.0",
+    "@rollup/plugin-node-resolve": "^13.3.0",
+    "@rollup/plugin-virtual": "^2.1.0",
+    "concurrently": "^7.2.1",
+    "eslint": "8.16.0",
+    "http-server": "^14.1.1",
+    "rollup": "^2.75.5",
+    "rollup-plugin-copy": "^3.4.0",
     "rollup-plugin-json": "^4.0.0",
     "rollup-plugin-node-globals": "^1.4.0",
     "rollup-plugin-node-polyfills": "^0.2.1",
